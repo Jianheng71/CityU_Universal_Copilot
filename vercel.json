@@ -1,4 +1,5 @@
 {
+  "installCommand": "npm install --omit=dev",
   "buildCommand": "echo 'Deploying serverless API functions'",
   "functions": {
     "api/ai.js": {
