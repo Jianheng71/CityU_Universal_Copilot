@@ -2,6 +2,16 @@
 
 基于 Chrome 侧边栏与动态聚光灯的 CityU AIMS 操作指南。
 
+## 下载并安装 Chrome 扩展（无需本地终端）
+
+每次推送到 `jianheng71-bugfix` 后，GitHub Actions 会自动构建扩展：
+
+1. 打开仓库的 [Actions 页面](https://github.com/Jianheng71/CityU_Universal_Copilot/actions)，选择最新的 **Build Chrome extension** 运行，等待状态显示成功。
+2. 在运行页面底部的 **Artifacts** 区域下载 `CityU-Universal-Sinno-Chrome`，并在 Finder 中解压下载的 ZIP。
+3. Chrome 打开 `chrome://extensions`，开启 **开发者模式**，点击 **加载已解压的扩展程序**，选择解压后含有 `manifest.json` 的文件夹。
+
+安装后点击 Chrome 工具栏的扩展图标打开侧边栏。若 Chrome 显示安全提示，只从本仓库 Actions 页面下载构建产物。
+
 ## 部署 AI 服务
 
 AI 代理支持 Vercel Functions。服务端 API 密钥只保存在部署平台，不要放进扩展源码或提交到 Git。
