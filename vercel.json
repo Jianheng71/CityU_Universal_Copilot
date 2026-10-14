@@ -1,0 +1,10 @@
+{
+  "installCommand": "npm install --omit=dev",
+  "buildCommand": "echo 'Deploying serverless API functions'",
+  "outputDirectory": "public",
+  "functions": {
+    "api/ai.js": {
+      "maxDuration": 30
+    }
+  }
+}
