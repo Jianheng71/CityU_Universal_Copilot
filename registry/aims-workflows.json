@@ -1,0 +1,74 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-10-14",
+  "workflows": {
+    "aims-degree-works": {
+      "workflowKey": "aims-degree-works",
+      "title": { "en": "DegreeWorks & Academic Progress", "zh": "查询毕业要求与学分进度 (DegreeWorks)" },
+      "category": "records",
+      "steps": [
+        { "stepId": 1, "guideText": { "en": "Click 'Study Plan' in the top navigation bar", "zh": "点击顶部导航栏的 Study Plan 菜单" }, "targetSelector": "a[href*='bmenu.P_StudyPlan']" },
+        { "stepId": 2, "guideText": { "en": "Click 'DegreeWorks' to view your audit", "zh": "点击 DegreeWorks 链接进入毕业审核页面" }, "targetSelector": "a[href*='bwskdegw.P_ViewDegreeWorks']" }
+      ]
+    },
+    "aims-weekly-schedule": {
+      "workflowKey": "aims-weekly-schedule",
+      "title": { "en": "Weekly Schedule", "zh": "查看当前学期课表 (Weekly Schedule)" },
+      "category": "registration",
+      "steps": [
+        { "stepId": 1, "guideText": { "en": "Click 'Course Registration' in the top menu", "zh": "点击顶部导航栏的 Course Registration 菜单" }, "targetSelector": "a[href*='bmenu.P_RegMenu']" },
+        { "stepId": 2, "guideText": { "en": "Click 'Weekly Schedule' for your visual timetable", "zh": "点击 Weekly Schedule 查看图形化课表" }, "targetSelector": "a[href*='bwskfshd.P_ViewWeeklySchedule']" }
+      ]
+    },
+    "aims-master-schedule": {
+      "workflowKey": "aims-master-schedule",
+      "title": { "en": "Master Class Schedule", "zh": "查询全校开课计划与选课时间 (Master Class Schedule)" },
+      "category": "registration",
+      "steps": [
+        { "stepId": 1, "guideText": { "en": "Type 'master' into the 'Find a Page' search box on the right", "zh": "在页面右侧的 Find a Page 搜索框中输入 master" }, "targetSelector": "input#p_table" },
+        { "stepId": 2, "guideText": { "en": "Click the 'Go' button to search", "zh": "点击 Go 按钮开始搜索" }, "targetSelector": "input[type='submit'][value='Go']" },
+        { "stepId": 3, "guideText": { "en": "Click 'Master Class Schedule' in the results", "zh": "点击搜索结果中的 Master Class Schedule 进入查询页" }, "targetSelector": "a[href*='bwskfcls.P_SelCrse']" }
+      ]
+    },
+    "aims-web-add-drop": {
+      "workflowKey": "aims-web-add-drop",
+      "title": { "en": "Web Add/Drop Courses", "zh": "网选课程加退选 (Web Add/Drop)" },
+      "category": "registration",
+      "steps": [
+        { "stepId": 1, "guideText": { "en": "Click 'Course Registration'", "zh": "点击 Course Registration 菜单" }, "targetSelector": "a[href*='bmenu.P_RegMenu']" },
+        { "stepId": 2, "guideText": { "en": "Click 'Web Add / Drop'", "zh": "点击 Web Add / Drop 进入选课主页面" }, "targetSelector": "a[href*='bwskfreg.P_AltPin']" },
+        { "stepId": 3, "guideText": { "en": "Select the term and click 'Submit'", "zh": "选择当前学期并点击 Submit" }, "targetSelector": "input[type='submit'][value='Submit']" },
+        { "stepId": 4, "guideText": { "en": "Enter CRN and click 'Submit Changes'", "zh": "在下方工作表的空白框中输入 5 位数 CRN 码，点击 Submit Changes 提交" }, "targetSelector": "input[type='submit'][value='Submit Changes']" }
+      ]
+    },
+    "aims-paper-add": {
+      "workflowKey": "aims-paper-add",
+      "title": { "en": "Paper-Add / Non-Web Course Application", "zh": "纸选课程与调整学分申请 (Paper-Add)" },
+      "category": "registration",
+      "steps": [
+        { "stepId": 1, "guideText": { "en": "Go to 'Course Registration'", "zh": "前往 Course Registration 菜单" }, "targetSelector": "a[href*='bmenu.P_RegMenu']" },
+        { "stepId": 2, "guideText": { "en": "Click 'Application for Add/Drop of Non-Web-enabled Course'", "zh": "点击 Application for Add/Drop of Non-Web-enabled Course 链接" }, "targetSelector": "a[href*='bwskfpad.P_PaperAddDrop']" }
+      ]
+    },
+    "aims-cresda-search": {
+      "workflowKey": "aims-cresda-search",
+      "title": { "en": "CRESDA Activity Search", "zh": "查询课外活动 (CRESDA)" },
+      "category": "student_services",
+      "steps": [
+        { "stepId": 1, "guideText": { "en": "Type 'cresda' in the search box", "zh": "在 AIMS 右上角 Find a Page 搜索栏中输入 cresda" }, "targetSelector": "input#p_table" },
+        { "stepId": 2, "guideText": { "en": "Click 'Go'", "zh": "点击 Go 按钮跳转到活动中心" }, "targetSelector": "input[type='submit'][value='Go']" },
+        { "stepId": 3, "guideText": { "en": "Click the CRESDA repository link", "zh": "点击 Central Repository on Student Development Activities 链接" }, "targetSelector": "a[href*='cresda']" }
+      ]
+    },
+    "aims-student-helper-job-search": {
+      "workflowKey": "aims-student-helper-job-search",
+      "title": { "en": "Student Helper & Internship Search", "zh": "搜寻学生助理与校内实习岗位 (Student Helper)" },
+      "category": "student_services",
+      "steps": [
+        { "stepId": 1, "guideText": { "en": "Click 'Student Services'", "zh": "点击顶部 Student Services 菜单" }, "targetSelector": "a[href*='bmenu.P_StuAdmin']" },
+        { "stepId": 2, "guideText": { "en": "Click 'Student Helper and Campus Internship Scheme'", "zh": "点击 Student Helper and Campus Internship Scheme 选项" }, "targetSelector": "a[href*='student_helper']" },
+        { "stepId": 3, "guideText": { "en": "Switch to 'Job Search' tab", "zh": "切换至 Job Search 标签页寻找心仪岗位" }, "targetSelector": "a#job_search_tab" }
+      ]
+    }
+  }
+}
