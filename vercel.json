@@ -1,0 +1,8 @@
+{
+  "buildCommand": "echo 'Deploying serverless API functions'",
+  "functions": {
+    "api/ai.js": {
+      "maxDuration": 30
+    }
+  }
+}
