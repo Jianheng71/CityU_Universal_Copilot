@@ -6,15 +6,11 @@ import { getPreferredLanguage, setPreferredLanguage, t, type SupportedLanguage }
 export default function Popup(): JSX.Element {
   const [language, setLanguage] = useState<SupportedLanguage>('en');
   const [provider, setProvider] = useState<AIProvider>('deepseek');
-  const [deepseekApiKey, setDeepseekApiKey] = useState('');
-  const [geminiApiKey, setGeminiApiKey] = useState('');
 
   useEffect(() => {
     void getPreferredLanguage().then(setLanguage);
     void getAISettings().then((settings) => {
       setProvider(settings.provider);
-      setDeepseekApiKey(settings.deepseekApiKey);
-      setGeminiApiKey(settings.geminiApiKey);
     });
   }, []);
 
@@ -24,7 +20,7 @@ export default function Popup(): JSX.Element {
   };
 
   const onSaveSettings = async (): Promise<void> => {
-    await setAISettings({ provider, deepseekApiKey, geminiApiKey });
+    await setAISettings({ provider });
   };
 
   return (
@@ -58,28 +54,6 @@ export default function Popup(): JSX.Element {
           <option value="deepseek">DeepSeek</option>
           <option value="gemini">Gemini</option>
         </select>
-      </div>
-
-      <div className="mb-3">
-        <label className="mb-1 block text-sm font-medium">DeepSeek API key</label>
-        <input
-          type="password"
-          className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-          value={deepseekApiKey}
-          onChange={(event) => setDeepseekApiKey(event.target.value)}
-          placeholder="sk-..."
-        />
-      </div>
-
-      <div className="mb-4">
-        <label className="mb-1 block text-sm font-medium">Gemini API key</label>
-        <input
-          type="password"
-          className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-          value={geminiApiKey}
-          onChange={(event) => setGeminiApiKey(event.target.value)}
-          placeholder="AIza..."
-        />
       </div>
 
       <button

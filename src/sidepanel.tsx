@@ -6,8 +6,6 @@ import { getPreferredLanguage, t, type SupportedLanguage } from './utils/i18n';
 export default function SidePanel(): JSX.Element {
   const [language, setLanguage] = useState<SupportedLanguage>('en');
   const [provider, setProvider] = useState<AIProvider>('deepseek');
-  const [deepseekApiKey, setDeepseekApiKey] = useState('');
-  const [geminiApiKey, setGeminiApiKey] = useState('');
   const [intent, setIntent] = useState('');
   const [result, setResult] = useState('');
 
@@ -15,13 +13,11 @@ export default function SidePanel(): JSX.Element {
     void getPreferredLanguage().then(setLanguage);
     void getAISettings().then((settings) => {
       setProvider(settings.provider);
-      setDeepseekApiKey(settings.deepseekApiKey);
-      setGeminiApiKey(settings.geminiApiKey);
     });
   }, []);
 
   const onSaveSettings = async (): Promise<void> => {
-    await setAISettings({ provider, deepseekApiKey, geminiApiKey });
+    await setAISettings({ provider });
   };
 
   const onAskAI = async (): Promise<void> => {
@@ -51,27 +47,6 @@ export default function SidePanel(): JSX.Element {
           <option value="deepseek">DeepSeek</option>
           <option value="gemini">Gemini</option>
         </select>
-
-        <div className="mt-3 space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">DeepSeek Key</label>
-            <input
-              type="password"
-              className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-              value={deepseekApiKey}
-              onChange={(event) => setDeepseekApiKey(event.target.value)}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Gemini Key</label>
-            <input
-              type="password"
-              className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm"
-              value={geminiApiKey}
-              onChange={(event) => setGeminiApiKey(event.target.value)}
-            />
-          </div>
-        </div>
 
         <button
           type="button"
