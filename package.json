@@ -16,7 +16,7 @@
     ],
     "host_permissions": [
       "https://*.cityu.edu.hk/*",
-      "https://cityu-universal-sinno-ai.vercel.app/*"
+      "https://*.workers.dev/*"
     ],
     "action": {
       "default_title": "CityU Universal Sinno"
@@ -30,11 +30,9 @@
     "build": "plasmo build",
     "start": "plasmo start",
     "package": "plasmo package",
-    "typecheck": "tsc --noEmit",
-    "proxy": "node --env-file=.env server/ai-proxy.js"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "express": "^4.21.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

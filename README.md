@@ -12,25 +12,14 @@
 
 安装后点击 Chrome 工具栏的扩展图标打开侧边栏。若 Chrome 显示安全提示，只从本仓库 Actions 页面下载构建产物。
 
-## 部署 AI 服务
+## 部署 AI 服务（Cloudflare Workers）
 
-AI 代理支持 Vercel Functions。服务端 API 密钥只保存在部署平台，不要放进扩展源码或提交到 Git。
+后端部署在 Cloudflare Workers；不再使用 Vercel。AI 服务密钥保存在 Cloudflare Worker Secrets 中，不放进扩展或 GitHub。
 
-1. 在 Vercel 导入此 GitHub 仓库，Framework Preset 选择 **Other**，Root Directory 保持仓库根目录。`vercel.json` 已配置只安装运行依赖，并将 Build Command 设为只部署 API functions，不会安装扩展开发工具或误运行 Chrome 扩展的构建流程。
-2. 在 Vercel **AI Gateway → API Keys** 创建一个 Gateway Key。然后在项目 **Settings → Environment Variables → Add Environment Variable** 添加 `AI_GATEWAY_API_KEY`，Type 选 **Secret**，Value 粘贴 Gateway Key，Environment 选 **Production** 并保存。一个 Gateway Key 即可供扩展中 DeepSeek 和 Gemini 两个选项共用。保存后需要重新部署 Production，环境变量才会进入运行中的函数。
-3. 部署项目后，确认 `https://<你的-Vercel-域名>/api/health` 返回 `{"ok":true,...}`。
-4. 如果 Vercel 域名不是 `cityu-universal-sinno-ai.vercel.app`，将 `src/services/aiRouter.ts` 的默认代理 URL 和 `package.json` manifest 中的 AI 服务 host permission 一并改为你的域名，然后重新构建扩展。也可在构建扩展时设置 `PLASMO_PUBLIC_AI_PROXY_URL=https://<你的-Vercel-域名>/api/ai` 覆盖代理 URL；host permission 仍需同步更新。
-5. 在 Vercel **Settings → Deployment Protection** 确保公开部署可访问；代理接口本身不需要用户登录。
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)，进入 **Workers & Pages → Create application → Workers → Connect to Git**，授权 GitHub 并选择 `Jianheng71/CityU_Universal_Copilot`。
+2. Production branch 选择 `jianheng71-bugfix`，Root directory 设为 `workers`。项目已带 `wrangler.jsonc`，不需要 Build command；Worker 名称为 `cityu-universal-sinno-ai`。完成创建并部署。
+3. 在 Worker 的 **Settings → Variables and Secrets** 中添加至少一个 Secret：`DEEPSEEK_API_KEY` 或 `GEMINI_API_KEY`。密钥需分别在 [DeepSeek API 平台](https://platform.deepseek.com/api_keys) 或 [Google AI Studio](https://aistudio.google.com/apikey) 创建；Vercel AI Gateway Key 不能代替这两种服务商密钥。保存 Secret 后重新部署 Worker。
+4. Worker 部署后会显示一个 `https://<worker>.<account-subdomain>.workers.dev` 地址。打开该地址后加 `/api/health`，应返回 `{"ok":true,"service":"cityu-universal-sinno-ai"}`。把 Worker 的完整域名提供给仓库维护者，用于配置扩展并自动构建安装包。
+5. 扩展中选 DeepSeek 或 Gemini。只有配置相应 Secret 的模型才能调用。费用按对应服务商账户用量结算；代理不记录问题，但请求会发送给所选 AI 服务商。接口有基础的每 IP 限流；还应在服务商账户设置用量限制或账单提醒。
 
-扩展可选择 DeepSeek 或 Gemini，两者通过同一个 Vercel AI Gateway Key 调用对应模型。使用会消耗 Vercel AI Gateway 账户的额度或预算，费用由部署方承担。代理不记录用户问题；请求内容会发送到所选 AI 服务商处理。AI 接口包含每个服务实例每 IP 每分钟 20 次的基础限流；部署方还应设置用量限额或账单告警。无状态函数的限流不等同于跨实例的强防护。旧版可继续使用 `DEEPSEEK_API_KEY` 或 `GEMINI_API_KEY` 直连服务商。
-
-## 本地运行 AI 代理
-
-```sh
-npm install
-cp .env.example .env
-# 在 .env 中填写 AI_GATEWAY_API_KEY，或对应服务商的直连密钥
-npm run proxy
-```
-
-本地代理地址为 `http://localhost:3001/api/ai`，健康检查为 `http://localhost:3001/api/health`。不要提交 `.env`。
+Worker 通过 Git 集成从 `workers` 子目录独立部署，不会安装或构建 Chrome 扩展依赖。后续提交到 Production branch 会自动触发 Worker 部署。
