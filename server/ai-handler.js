@@ -1,5 +1,60 @@
-const DEEPSEEK_MODEL = 'deepseek-chat';
-const GEMINI_MODEL = 'gemini-2.5-pro';
+const AI_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+const GATEWAY_MODELS = {
+  deepseek: 'deepseek/deepseek-v4-flash',
+  gemini: 'google/gemini-2.5-flash'
+};
+
+function providerError(status, provider, gateway = false) {
+  if (status === 401 || status === 403) {
+    return gateway
+      ? 'Vercel AI Gateway rejected the key. Check AI_GATEWAY_API_KEY in Vercel Production environment variables.'
+      : `${provider === 'gemini' ? 'Gemini' : 'DeepSeek'} rejected the configured API key.`;
+  }
+  if (status === 402) {
+    return gateway
+      ? 'Vercel AI Gateway has no available balance or budget for this request.'
+      : 'The selected AI provider has no available balance or quota.';
+  }
+  if (status === 429) {
+    return gateway ? 'Vercel AI Gateway rate limit reached. Please wait and retry.' : 'The selected AI provider rate limit was reached.';
+  }
+  if (status === 404) {
+    return gateway ? 'The selected model is unavailable in Vercel AI Gateway.' : 'The selected model was not found at the AI provider.';
+  }
+  return 'The AI provider could not complete the request.';
+}
+
+async function requestGateway({ apiKey, provider, prompt }) {
+  const response = await fetch(AI_GATEWAY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: GATEWAY_MODELS[provider],
+      messages: [
+        { role: 'system', content: 'You are CityU Universal Sinno, a concise and privacy-first CityU AIMS guide.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.2,
+      max_tokens: 600,
+      stream: false
+    }),
+    signal: AbortSignal.timeout(25000)
+  });
+
+  if (!response.ok) {
+    return { status: 502, body: { error: providerError(response.status, provider, true) } };
+  }
+
+  const data = await response.json();
+  const answer = data.choices?.[0]?.message?.content?.trim();
+  return {
+    status: 200,
+    body: { provider, answer: answer || 'No answer returned by the AI Gateway.' }
+  };
+}
 
 function validateRequest(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -32,6 +87,11 @@ function validateRequest(body) {
 
 async function requestAI({ provider, intent, workflow }) {
   const prompt = `User intent: ${intent}\n\nWorkflow context: ${workflow ? JSON.stringify(workflow, null, 2) : 'No workflow matched'}\n\nProvide a concise, practical answer for CityU AIMS users.`;
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
+
+  if (gatewayKey) {
+    return requestGateway({ apiKey: gatewayKey, provider, prompt });
+  }
 
   if (provider === 'gemini') {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -52,9 +112,7 @@ async function requestAI({ provider, intent, workflow }) {
       }
     );
 
-    if (!response.ok) {
-      return { status: 502, body: { error: 'Gemini could not complete the request.' } };
-    }
+    if (!response.ok) return { status: 502, body: { error: providerError(response.status, provider) } };
 
     const data = await response.json();
     const answer = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join(' ').trim();
@@ -84,9 +142,7 @@ async function requestAI({ provider, intent, workflow }) {
     signal: AbortSignal.timeout(25000)
   });
 
-  if (!response.ok) {
-    return { status: 502, body: { error: 'DeepSeek could not complete the request.' } };
-  }
+  if (!response.ok) return { status: 502, body: { error: providerError(response.status, provider) } };
 
   const data = await response.json();
   const answer = data.choices?.[0]?.message?.content?.trim();
@@ -97,6 +153,24 @@ async function handleAI(body) {
   const validationError = validateRequest(body);
   if (validationError) {
     return { status: 400, body: { error: validationError } };
+  }
+
+  if (!process.env.AI_GATEWAY_API_KEY &&
+      (body.provider ?? 'deepseek') === 'deepseek' &&
+      !process.env.DEEPSEEK_API_KEY) {
+    return {
+      status: 503,
+      body: { error: 'Add AI_GATEWAY_API_KEY to the Vercel Production environment variables.' }
+    };
+  }
+
+  if (!process.env.AI_GATEWAY_API_KEY &&
+      (body.provider ?? 'deepseek') === 'gemini' &&
+      !process.env.GEMINI_API_KEY) {
+    return {
+      status: 503,
+      body: { error: 'Add AI_GATEWAY_API_KEY or GEMINI_API_KEY to the Vercel Production environment variables.' }
+    };
   }
 
   try {
