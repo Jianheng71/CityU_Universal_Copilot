@@ -26,14 +26,35 @@ const router = (): void => {
       };
 
       const sendGuide = (targetTabId: number): void => {
-        chrome.tabs.sendMessage(targetTabId, guideMessage, (response) => {
-          const error = chrome.runtime.lastError;
-          if (error) {
-            sendResponse({ ok: false, reason: 'AIMS page content script is unavailable. Refresh the AIMS tab and try again.' });
-            return;
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: targetTabId, allFrames: true },
+            func: (selector: string) => Boolean(document.querySelector(selector)),
+            args: [guideMessage.selector]
+          },
+          (frames) => {
+            const scanError = chrome.runtime.lastError;
+            if (scanError) {
+              sendResponse({ ok: false, reason: `Unable to inspect AIMS page frames: ${scanError.message}` });
+              return;
+            }
+
+            const targetFrame = frames?.find((frame) => frame.result === true);
+            if (!targetFrame) {
+              sendResponse({ ok: false, reason: 'The requested menu was not found in any accessible AIMS page frame.' });
+              return;
+            }
+
+            chrome.tabs.sendMessage(targetTabId, guideMessage, { frameId: targetFrame.frameId }, (response) => {
+              const messageError = chrome.runtime.lastError;
+              if (messageError) {
+                sendResponse({ ok: false, reason: `AIMS content script did not respond: ${messageError.message}` });
+                return;
+              }
+              sendResponse(response ?? { ok: false, reason: 'The AIMS page did not acknowledge the highlight request.' });
+            });
           }
-          sendResponse(response ?? { ok: false, reason: 'The AIMS page did not acknowledge the highlight request.' });
-        });
+        );
       };
 
       if (typeof tabId === 'number') {

@@ -164,7 +164,7 @@ export default function SidePanel(): JSX.Element {
           selector: firstStep.targetSelector,
           guideText: firstStep.guideText[language]
         });
-        setNotice(highlight.ok ? text.highlight : text.unavailable);
+        setNotice(highlight.ok ? text.highlight : `${text.unavailable} (${highlight.reason ?? 'unknown error'})`);
       } else if (result.workflow?.workflowKey !== 'docs-fallback') {
         setNotice(text.noTab);
       }
