@@ -45,7 +45,6 @@ const initializeContentScript = async (): Promise<void> => {
         const targetSelector = typeof message.selector === 'string' ? message.selector : '';
         const nextTarget = targetSelector ? document.querySelector(targetSelector) as HTMLElement | null : null;
         if (!nextTarget) {
-          sendResponse({ ok: false, reason: 'The requested AIMS page element was not found.' });
           return false;
         }
 
