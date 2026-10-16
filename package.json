@@ -1,13 +1,13 @@
 {
   "name": "cityu-universal-sinno",
   "displayName": "CityU Universal Sinno",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Privacy-first Digital Adoption Platform for CityU AIMS",
   "author": "CityU Universal Sinno",
   "manifest": {
     "manifest_version": 3,
     "name": "CityU Universal Sinno",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "description": "Privacy-first Digital Adoption Platform for CityU AIMS",
     "permissions": [
       "storage",
