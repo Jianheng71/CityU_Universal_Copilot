@@ -4,7 +4,7 @@
 
 ## 下载并安装 Chrome 扩展（无需本地终端）
 
-**[点击下载 Chrome 扩展 ZIP](https://github.com/Jianheng71/CityU_Universal_Copilot/actions/runs/38860233121/artifacts/12028763178)**（2026-10-16 构建）。下载可能需要先登录 GitHub；此构建产物将于 2026-11-15 过期。之后的版本可在 [Build Chrome extension 构建记录](https://github.com/Jianheng71/CityU_Universal_Copilot/actions/workflows/build-extension.yml)下载最新成功运行中的 `CityU-Universal-Sinno-Chrome`。
+**[点击直接下载 Chrome 扩展 ZIP](https://github.com/Jianheng71/CityU_Universal_Copilot/releases/latest/download/CityU-Universal-Sinno-Chrome.zip)**。这是最新稳定版；下载后解压并按下面步骤安装。
 
 1. 下载并在 Finder 中解压 ZIP。
 2. Chrome 打开 `chrome://extensions`，开启 **开发者模式**，点击 **加载已解压的扩展程序**，选择解压后含有 `manifest.json` 的文件夹。
