@@ -27,6 +27,16 @@ const CITYU_DOCS_URL = 'https://cityu.netlify.app/docs/welcome/academicresources
 
 const normalize = (value: string): string => value.trim().toLowerCase();
 
+const intentAliases: Record<string, string[]> = {
+  'aims-weekly-schedule': ['weekly schedule', 'timetable', '课表', '每周课表', '周课表', '查看课表'],
+  'aims-degree-works': ['degreeworks', 'academic progress', '学业进度', '毕业要求', '学分进度'],
+  'aims-master-schedule': ['master class schedule', 'master schedule', '全校开课', '开课计划'],
+  'aims-web-add-drop': ['web add drop', 'add drop', '加退选', '选课', '加课', '退课'],
+  'aims-paper-add': ['paper add', 'non-web course', '纸选', '纸选课程'],
+  'aims-cresda-search': ['cresda', 'activity search', '课外活动'],
+  'aims-student-helper-job-search': ['student helper', 'internship', '学生助理', '校内实习']
+};
+
 export async function loadWorkflowRegistry(): Promise<WorkflowCollection | null> {
   try {
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -90,7 +100,12 @@ export async function findWorkflowByIntent(intent: string): Promise<WorkflowConf
 
   for (const workflow of candidates) {
     const haystack = normalize(`${workflow.workflowKey} ${workflow.title.en} ${workflow.title.zh} ${workflow.category} ${workflow.steps.map((step) => `${step.guideText.en} ${step.guideText.zh}`).join(' ')}`);
-    if (haystack.includes(normalizedIntent) || normalizedIntent.includes(workflow.workflowKey)) {
+    const aliases = intentAliases[workflow.workflowKey] ?? [];
+    if (
+      haystack.includes(normalizedIntent) ||
+      normalizedIntent.includes(workflow.workflowKey) ||
+      aliases.some((alias) => normalizedIntent.includes(normalize(alias)))
+    ) {
       return workflow;
     }
   }

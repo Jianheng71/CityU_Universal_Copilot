@@ -8,7 +8,7 @@ export type AISettings = {
 
 const STORAGE_KEY = 'cityu-universal-sinno-ai-settings';
 const DEFAULT_PROXY_URL =
-  process.env.PLASMO_PUBLIC_AI_PROXY_URL ?? 'https://cityu-universal-sinno-ai.vercel.app/api/ai';
+  process.env.PLASMO_PUBLIC_AI_PROXY_URL ?? 'https://cityu-universal-sinno-ai.jianhenli2-c.workers.dev/api/ai';
 
 function getStorageFallback(): Record<string, string> {
   if (typeof window === 'undefined') {
@@ -117,7 +117,7 @@ export async function routeModelRequest(intent: string): Promise<{ provider: AIP
     return {
       provider: settings.provider,
       workflow,
-      response: `Unable to reach AI proxy: ${message}. Check that the AI service has been deployed and the extension is configured with its URL.`
+      response: `Unable to reach AI service: ${message}. Check that the Cloudflare Worker has been deployed and the extension uses its URL.`
     };
   }
 }

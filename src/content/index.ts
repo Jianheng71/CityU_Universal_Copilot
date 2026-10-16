@@ -30,34 +30,43 @@ const privacyTrigger = async (): Promise<void> => {
 
 initDynamicPrivacyShield(privacyTrigger);
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('DOMContentLoaded', async () => {
-    const lang = await getPreferredLanguage();
-    const key = 'aims-degree-works';
-    const selector = 'a[href*="bmenu.P_StudyPlan"]';
-    const target = document.querySelector(selector) as HTMLElement | null;
-    if (target) {
-      injectGlassSpotlight(target, t('workflow.default', lang));
-    }
-    if (typeof chrome !== 'undefined') {
-      chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-        if (message?.type === 'show-guide') {
-          const nextTarget = document.querySelector(message.selector as string) as HTMLElement | null;
-          if (nextTarget) {
-            injectGlassSpotlight(nextTarget, message.guideText ?? t('workflow.default', lang));
-          }
-          sendResponse({ ok: true, selector: message.selector ?? key });
-          return true;
+const initializeContentScript = async (): Promise<void> => {
+  const lang = await getPreferredLanguage();
+  const key = 'aims-degree-works';
+  const selector = 'a[href*="bmenu.P_StudyPlan"]';
+  const target = document.querySelector(selector) as HTMLElement | null;
+  if (target) {
+    injectGlassSpotlight(target, t('workflow.default', lang));
+  }
+
+  if (typeof chrome !== 'undefined') {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message?.type === 'show-guide') {
+        const targetSelector = typeof message.selector === 'string' ? message.selector : '';
+        const nextTarget = targetSelector ? document.querySelector(targetSelector) as HTMLElement | null : null;
+        if (!nextTarget) {
+          sendResponse({ ok: false, reason: 'The requested AIMS page element was not found.' });
+          return false;
         }
 
-        if (message?.type === 'clear-guide') {
-          removeSpotlight();
-          sendResponse({ ok: true });
-          return true;
-        }
-
+        injectGlassSpotlight(nextTarget, message.guideText ?? t('workflow.default', lang));
+        sendResponse({ ok: true, selector: targetSelector });
         return false;
-      });
-    }
-  });
+      }
+
+      if (message?.type === 'clear-guide') {
+        removeSpotlight();
+        sendResponse({ ok: true });
+        return false;
+      }
+
+      return false;
+    });
+  }
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => void initializeContentScript(), { once: true });
+} else {
+  void initializeContentScript();
 }
