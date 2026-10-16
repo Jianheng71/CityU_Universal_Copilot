@@ -8,7 +8,7 @@ export type AISettings = {
 
 const STORAGE_KEY = 'cityu-universal-sinno-ai-settings';
 const DEFAULT_PROXY_URL =
-  process.env.PLASMO_PUBLIC_AI_PROXY_URL ?? 'https://replace-with-cloudflare-worker-url.workers.dev/api/ai';
+  process.env.PLASMO_PUBLIC_AI_PROXY_URL ?? 'https://cityu-universal-sinno-ai.jianhenli2-c.workers.dev/api/ai';
 
 function getStorageFallback(): Record<string, string> {
   if (typeof window === 'undefined') {
