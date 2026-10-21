@@ -10,6 +10,7 @@ const outdir = mkdtempSync(join(tmpdir(), 'cityu-unit-'));
 
 await esbuild.build({
   entryPoints: [
+    'tests/aims-workflows.test.ts',
     'tests/aimsTab.test.ts',
     'tests/spotlightGeometry.test.ts',
     'tests/source-guards.test.ts'
