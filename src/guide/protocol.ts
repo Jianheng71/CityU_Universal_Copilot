@@ -16,6 +16,20 @@ export type GuideResponse = {
   reason?: string;
   selector?: string;
   frameId?: number;
+  visible?: boolean;
+};
+
+export type GuideStepMessage = {
+  stepId?: number;
+  targetSelector?: string;
+  guideText?: string;
+};
+
+export type StartGuideRequest = {
+  type: 'start-guide';
+  workflowKey?: string;
+  steps?: GuideStepMessage[];
+  tabId?: number;
 };
 
 export type ShowGuideRequest = {

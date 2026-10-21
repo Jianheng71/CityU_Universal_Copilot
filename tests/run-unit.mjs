@@ -12,6 +12,8 @@ await esbuild.build({
   entryPoints: [
     'tests/aims-workflows.test.ts',
     'tests/aimsTab.test.ts',
+    'tests/guideSession.test.ts',
+    'tests/privacyShield.test.ts',
     'tests/spotlightGeometry.test.ts',
     'tests/source-guards.test.ts'
   ],

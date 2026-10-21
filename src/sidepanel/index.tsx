@@ -19,6 +19,8 @@ type Copy = {
   suggestions: string[];
   thinking: string;
   highlight: string;
+  guideNext: string;
+  guideDone: string;
   noTab: string;
   unavailable: string;
   theme: string;
@@ -36,7 +38,9 @@ const copy: Record<SupportedLanguage, Copy> = {
     welcome: 'Ask a question or choose a suggestion to get started.',
     suggestions: ['How do I view my weekly schedule?', 'How do I check my academic progress?'],
     thinking: 'Thinking…',
-    highlight: 'I highlighted the relevant item in your AIMS tab.',
+    highlight: 'Highlighted in your AIMS tab. The spotlight stays on each step until you click it.',
+    guideNext: 'Next step is highlighted in your AIMS tab.',
+    guideDone: 'AIMS guide finished.',
     noTab: 'Open a CityU AIMS page to highlight the matching menu.',
     unavailable: 'Could not highlight the AIMS page. Make sure it is open, then refresh it.',
     theme: 'Toggle color theme',
@@ -52,7 +56,9 @@ const copy: Record<SupportedLanguage, Copy> = {
     welcome: '输入问题，或选择下方建议开始。',
     suggestions: ['如何查看每周课表？', '如何查询学业进度？'],
     thinking: '思考中…',
-    highlight: '已在 AIMS 页面高亮相关菜单。',
+    highlight: '已在 AIMS 页面高亮。聚光灯会停在当前步骤，直到你点击。',
+    guideNext: '已在 AIMS 页面高亮下一步。',
+    guideDone: 'AIMS 引导已完成。',
     noTab: '请先打开 CityU AIMS 页面，再高亮对应菜单。',
     unavailable: '无法高亮 AIMS 页面。请确认页面已打开，然后刷新页面。',
     theme: '切换颜色主题',
@@ -88,10 +94,11 @@ function Icon({ name, size = 20 }: { name: 'send' | 'spark' | 'sun' | 'moon'; si
 }
 
 function sendToBackground(message: {
-  type: 'route-to-aims' | 'clear-guide';
-  selector?: string;
-  guideText?: string;
+  type: 'start-guide' | 'clear-guide';
+  workflowKey?: string;
+  steps?: Array<{ stepId: number; targetSelector: string; guideText: string }>;
   tabId?: number;
+  cancel?: boolean;
 }): Promise<GuideResponse> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     return Promise.resolve({ ok: false, code: 'no-ack', reason: 'Extension messaging is unavailable.' });
@@ -168,6 +175,30 @@ export default function SidePanel(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) {
+      return undefined;
+    }
+
+    const listener = (message: { type?: string; phase?: string; stepIndex?: number }): void => {
+      if (!message || message.type !== 'guide-progress') {
+        return;
+      }
+      if (message.phase === 'finished') {
+        setNotice(copy[language].guideDone);
+        return;
+      }
+      if (message.phase === 'showing' && typeof message.stepIndex === 'number' && message.stepIndex > 0) {
+        setNotice(copy[language].guideNext);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(listener);
+    return () => {
+      chrome.runtime.onMessage.removeListener(listener);
+    };
+  }, [language]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, busy, notice]);
 
@@ -195,14 +226,21 @@ export default function SidePanel(): JSX.Element {
     try {
       const result = await routeModelRequest(intent);
       const answer = result.response;
-      const firstStep = result.workflow?.steps[0];
+      const workflow = result.workflow;
+      const steps = workflow && workflow.workflowKey !== 'docs-fallback'
+        ? workflow.steps.filter((step) => step.targetSelector && step.targetSelector !== 'body')
+        : [];
 
-      if (result.workflow && result.workflow.workflowKey !== 'docs-fallback' && firstStep?.targetSelector && firstStep.targetSelector !== 'body') {
+      if (workflow && steps.length) {
         const tabId = await resolveAimsTabId();
         const highlight = await sendToBackground({
-          type: 'route-to-aims',
-          selector: firstStep.targetSelector,
-          guideText: firstStep.guideText[language],
+          type: 'start-guide',
+          workflowKey: workflow.workflowKey,
+          steps: steps.map((step) => ({
+            stepId: step.stepId,
+            targetSelector: step.targetSelector,
+            guideText: step.guideText[language]
+          })),
           tabId
         });
         if (highlight.ok) {
@@ -212,8 +250,11 @@ export default function SidePanel(): JSX.Element {
         } else {
           setNotice(highlight.reason ? `${text.unavailable} (${highlight.reason})` : text.unavailable);
         }
-      } else if (result.workflow?.workflowKey !== 'docs-fallback') {
-        setNotice(text.noTab);
+      } else {
+        void sendToBackground({ type: 'clear-guide', cancel: true });
+        if (workflow?.workflowKey !== 'docs-fallback') {
+          setNotice(text.noTab);
+        }
       }
 
       setMessages((current) => [...current, { role: 'assistant', text: answer }]);

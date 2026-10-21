@@ -1,8 +1,8 @@
-import { findHighlightTarget } from './domTarget';
-import { clipSelector, type GuideResponse, type ShowGuideRequest } from '../guide/protocol';
+import { GUIDE_PENDING_COMPLETION_KEY } from '../guide/session';
+import type { GuideResponse, ShowGuideRequest } from '../guide/protocol';
 import { getPreferredLanguage, t } from '../utils/i18n';
+import { armPageGuide, disarmPageGuide } from './pageGuide';
 import { initDynamicPrivacyShield } from './privacyShield';
-import { injectGlassSpotlight, removeSpotlight } from './spotlightOverlay';
 
 const STARTED_FLAG = '__cityuSinnoContentStarted';
 
@@ -32,9 +32,9 @@ async function showPrivacyNotice(): Promise<void> {
 }
 
 const privacyTrigger = (): void => {
-  removeSpotlight();
+  disarmPageGuide();
   try {
-    chrome.runtime?.sendMessage?.({ type: 'clear-guide' }, () => {
+    chrome.runtime?.sendMessage?.({ type: 'clear-guide', cancel: true }, () => {
       void chrome.runtime.lastError;
     });
   } catch {
@@ -43,37 +43,44 @@ const privacyTrigger = (): void => {
   void showPrivacyNotice();
 };
 
+function publishStepCompletion(selector: string): void {
+  try {
+    void chrome.storage?.session?.set({
+      [GUIDE_PENDING_COMPLETION_KEY]: { selector, at: Date.now() }
+    });
+  } catch {
+    // The runtime message below is the primary completion signal.
+  }
+
+  try {
+    chrome.runtime?.sendMessage?.({ type: 'guide-step-done', selector }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {
+    // A reloaded frame reads the stored completion and continues the guide.
+  }
+}
+
+function announceFrameReady(): void {
+  try {
+    chrome.runtime?.sendMessage?.({ type: 'guide-frame-ready' }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {
+    // The side panel can still start a guide in this frame.
+  }
+}
+
 async function handleShowGuide(message: ShowGuideRequest): Promise<GuideResponse> {
   const selector = typeof message.selector === 'string' ? message.selector.trim() : '';
-  if (!selector || selector === 'body') {
-    return { ok: false, code: 'no-selector', reason: 'No target selector was provided.' };
-  }
-
-  const found = findHighlightTarget(document, selector, message.searchFrames === true);
-  if (found.invalid) {
-    return {
-      ok: false,
-      code: 'invalid-selector',
-      reason: `The highlight selector is not valid CSS (${clipSelector(selector)}).`
-    };
-  }
-
-  if (!found.element) {
-    return {
-      ok: false,
-      code: 'element-not-found',
-      reason: 'The requested AIMS element was not found in this frame.'
-    };
-  }
-
   const provided = typeof message.guideText === 'string' ? message.guideText.trim() : '';
   const guideText = provided || t('workflow.default', await getPreferredLanguage());
-  const drawn = injectGlassSpotlight(found.element, guideText);
-  if (!drawn.ok) {
-    return drawn;
-  }
-
-  return { ok: true, code: 'ok', selector };
+  return armPageGuide({
+    selector,
+    guideText,
+    searchFrames: message.searchFrames === true,
+    onComplete: publishStepCompletion
+  });
 }
 
 function registerGuideMessages(): void {
@@ -88,7 +95,7 @@ function registerGuideMessages(): void {
 
     const type = (message as { type?: unknown }).type;
     if (type === 'clear-guide') {
-      removeSpotlight();
+      disarmPageGuide();
       sendResponse({ ok: true, code: 'ok' } satisfies GuideResponse);
       return false;
     }
@@ -125,4 +132,9 @@ export function startAimsContentScript(): void {
   } catch (error) {
     console.error('CityU privacy shield failed to start', error);
   }
+
+  announceFrameReady();
+  window.addEventListener('pageshow', () => {
+    announceFrameReady();
+  });
 }
