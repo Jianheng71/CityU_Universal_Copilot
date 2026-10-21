@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>CityU AIMS fixture</title>
+    <script>
+      window.__pageErrors = [];
+      window.addEventListener('error', (event) => {
+        window.__pageErrors.push(String(event.message));
+      });
+    </script>
+    <style>
+      html, body { margin: 0; padding: 0; }
+      body { font-family: "Segoe UI", sans-serif; background: #eef2f5; color: #1f2937; }
+      header { background: #7a1f2b; color: #fff; padding: 18px 28px; font-size: 20px; }
+      header span { opacity: 0.8; font-size: 14px; margin-left: 12px; }
+      nav { display: flex; gap: 8px; background: #5c1720; padding: 10px 24px; }
+      nav a { color: #fff; text-decoration: none; padding: 8px 12px; border-radius: 6px; }
+      nav a:hover { background: rgba(255, 255, 255, 0.12); }
+      main { padding: 28px; }
+      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px 20px; max-width: 720px; }
+      iframe { width: 100%; height: 88px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+      #far { display: inline-block; margin-top: 1400px; }
+      #pw { position: absolute; left: -2000px; top: 0; }
+      #result { position: absolute; left: -9999px; }
+    </style>
+  </head>
+  <body>
+    <header>CityU AIMS <span>Academic Information Management System</span></header>
+    <nav>
+      <a id="reg" href="/pls/PROD/bmenu.P_RegMenu">Course Registration</a>
+      <a id="study" href="/pls/PROD/bmenu.P_StudyPlan">Study Plan</a>
+    </nav>
+    <main>
+      <div class="card">
+        <h1 style="margin:0 0 8px;font-size:22px">Student Services</h1>
+        <p style="margin:0 0 14px;color:#4b5563">Weekly timetable lives in the embedded AIMS menu frame.</p>
+        <iframe id="menu" title="AIMS menu"></iframe>
+        <div id="shadow-host"></div>
+        <a id="hidden-link" href="/pls/PROD/bwskfreg.P_AltPin" style="display:none">Hidden Add/Drop</a>
+        <a id="far" href="/pls/PROD/bwskfcls.P_SelCrse">Master Class Schedule</a>
+      </div>
+    </main>
+    <input id="pw" type="password" autocomplete="current-password" aria-label="password" />
+    <pre id="result"></pre>
+    <script src="/spotlight-test.js"></script>
+    <script src="/run.js"></script>
+  </body>
+</html>

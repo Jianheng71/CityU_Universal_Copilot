@@ -1,13 +1,13 @@
 {
   "name": "cityu-universal-sinno",
   "displayName": "CityU Universal Sinno",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "Privacy-first Digital Adoption Platform for CityU AIMS",
   "author": "CityU Universal Sinno",
   "manifest": {
     "manifest_version": 3,
     "name": "CityU Universal Sinno",
-    "version": "0.1.0",
+    "version": "0.1.5",
     "description": "Privacy-first Digital Adoption Platform for CityU AIMS",
     "permissions": [
       "storage",
@@ -30,7 +30,10 @@
     "build": "plasmo build",
     "start": "plasmo start",
     "package": "plasmo package",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/run-unit.mjs",
+    "test:dom": "node tests/run-spotlight-dom.mjs",
+    "check:manifest": "node scripts/check-manifest.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -42,6 +45,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "autoprefixer": "^10.4.20",
+    "esbuild": "^0.25.12",
     "plasmo": "^0.89.2",
     "postcss": "^8.4.49",
     "sharp": "^0.35.5",

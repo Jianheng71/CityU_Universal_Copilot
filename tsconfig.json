@@ -24,6 +24,7 @@
   "include": [
     ".plasmo/index.d.ts",
     "src/**/*",
+    "tests/**/*.ts",
     "*.d.ts"
   ]
 }

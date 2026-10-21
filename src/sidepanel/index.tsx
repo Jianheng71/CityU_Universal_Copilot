@@ -1,16 +1,13 @@
 import React, { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import '../style.css';
+import { pickAimsTabId, type TabCandidate } from '../guide/aimsTab';
+import type { GuideResponse } from '../guide/protocol';
 import { getAISettings, routeModelRequest, setAISettings, type AIProvider } from '../services/aiRouter';
 import { getPreferredLanguage, setPreferredLanguage, type SupportedLanguage } from '../utils/i18n';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
   text: string;
-};
-
-type HighlightResponse = {
-  ok: boolean;
-  reason?: string;
 };
 
 type Copy = {
@@ -94,21 +91,63 @@ function sendToBackground(message: {
   type: 'route-to-aims' | 'clear-guide';
   selector?: string;
   guideText?: string;
-}): Promise<HighlightResponse> {
+  tabId?: number;
+}): Promise<GuideResponse> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
-    return Promise.resolve({ ok: false, reason: 'Extension messaging is unavailable.' });
+    return Promise.resolve({ ok: false, code: 'no-ack', reason: 'Extension messaging is unavailable.' });
   }
 
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, (response: HighlightResponse | undefined) => {
-      const runtimeError = chrome.runtime.lastError;
-      if (runtimeError) {
-        resolve({ ok: false, reason: runtimeError.message });
-        return;
-      }
-      resolve(response ?? { ok: false, reason: 'No response from the extension background.' });
-    });
+    const timer = window.setTimeout(() => {
+      resolve({
+        ok: false,
+        code: 'no-ack',
+        reason: 'The highlight request timed out before the AIMS page responded.'
+      });
+    }, 8000);
+
+    try {
+      chrome.runtime.sendMessage(message, (response: GuideResponse | undefined) => {
+        window.clearTimeout(timer);
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError) {
+          resolve({ ok: false, code: 'no-ack', reason: runtimeError.message });
+          return;
+        }
+        resolve(response ?? { ok: false, code: 'no-ack', reason: 'No response from the extension background.' });
+      });
+    } catch (error) {
+      window.clearTimeout(timer);
+      resolve({
+        ok: false,
+        code: 'no-ack',
+        reason: error instanceof Error ? error.message : 'Extension messaging is unavailable.'
+      });
+    }
   });
+}
+
+async function resolveAimsTabId(): Promise<number | undefined> {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.query) {
+    return undefined;
+  }
+
+  try {
+    const [tabs, currentWindow] = await Promise.all([
+      chrome.tabs.query({}),
+      chrome.windows.getCurrent()
+    ]);
+    const candidates: TabCandidate[] = tabs.map((tab) => ({
+      id: tab.id,
+      url: tab.url,
+      active: tab.active,
+      lastAccessed: tab.lastAccessed,
+      windowId: tab.windowId
+    }));
+    return pickAimsTabId({ tabs: candidates, focusedWindowId: currentWindow?.id }) ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export default function SidePanel(): JSX.Element {
@@ -159,12 +198,20 @@ export default function SidePanel(): JSX.Element {
       const firstStep = result.workflow?.steps[0];
 
       if (result.workflow && result.workflow.workflowKey !== 'docs-fallback' && firstStep?.targetSelector && firstStep.targetSelector !== 'body') {
+        const tabId = await resolveAimsTabId();
         const highlight = await sendToBackground({
           type: 'route-to-aims',
           selector: firstStep.targetSelector,
-          guideText: firstStep.guideText[language]
+          guideText: firstStep.guideText[language],
+          tabId
         });
-        setNotice(highlight.ok ? text.highlight : text.unavailable);
+        if (highlight.ok) {
+          setNotice(text.highlight);
+        } else if (highlight.code === 'no-tab') {
+          setNotice(highlight.reason ? `${text.noTab} (${highlight.reason})` : text.noTab);
+        } else {
+          setNotice(highlight.reason ? `${text.unavailable} (${highlight.reason})` : text.unavailable);
+        }
       } else if (result.workflow?.workflowKey !== 'docs-fallback') {
         setNotice(text.noTab);
       }

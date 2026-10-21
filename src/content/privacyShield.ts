@@ -1,3 +1,5 @@
+import { SPOTLIGHT_HOST_ID } from './constants';
+
 const SAFE_ATTRIBUTE_KEYS = [
   'name',
   'id',
@@ -37,7 +39,7 @@ const SENSITIVE_TOKENS = [
 ];
 
 export function isSensitiveElement(element: HTMLElement): boolean {
-  if (!(element instanceof HTMLElement)) {
+  if (!(element instanceof HTMLElement) || element.id === SPOTLIGHT_HOST_ID) {
     return false;
   }
 
@@ -107,12 +109,15 @@ export function initDynamicPrivacyShield(onTriggerPrivacy: () => void): void {
     }
   });
 
-  observer.observe(document.body ?? document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['type', 'name', 'id', 'autocomplete', 'placeholder', 'aria-label', 'class', 'data-sensitive']
-  });
+  const observeRoot = document.body ?? document.documentElement;
+  if (observeRoot) {
+    observer.observe(observeRoot, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['type', 'name', 'id', 'autocomplete', 'placeholder', 'aria-label', 'class', 'data-sensitive']
+    });
+  }
 
   const cleanup = (): void => {
     document.removeEventListener('focusin', trigger, true);
