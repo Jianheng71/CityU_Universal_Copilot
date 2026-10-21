@@ -1,6 +1,26 @@
 import { pickAimsTabId, isCityuUrl, type TabCandidate } from './guide/aimsTab';
+import {
+  GUIDE_PENDING_COMPLETION_KEY,
+  GUIDE_SESSION_STORAGE_KEY,
+  completeGuideStep,
+  createGuideSession,
+  currentGuideStep,
+  pendingCompletionAdvances,
+  pickSpotlightWinner,
+  readStoredSessions,
+  sanitizeGuideSteps,
+  type GuideSessionState
+} from './guide/session';
 import { clipSelector, type GuideResponse, type ShowGuideRequest } from './guide/protocol';
 import { getPreferredLanguage } from './utils/i18n';
+
+const RETRY_DELAYS_MS = [250, 600, 1200, 2000, 3200, 5000];
+
+const sessions = new Map<number, GuideSessionState>();
+const retryTimers = new Map<number, ReturnType<typeof setTimeout>[]>();
+const reconcileTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const tails = new Map<number, Promise<unknown>>();
+let hydratePromise: Promise<void> | null = null;
 
 function toCandidate(tab: chrome.tabs.Tab): TabCandidate {
   return {
@@ -133,7 +153,126 @@ function summarizeFailure(selector: string, responses: GuideResponse[]): GuideRe
   };
 }
 
-async function highlightInTab(tabId: number, selector: string, guideText: string): Promise<GuideResponse> {
+function enqueue<T>(tabId: number, task: () => Promise<T>): Promise<T> {
+  const previous = tails.get(tabId) ?? Promise.resolve();
+  const run = previous.then(task, task);
+  tails.set(tabId, run.then(() => undefined, () => undefined));
+  return run;
+}
+
+async function persistSessions(): Promise<void> {
+  if (!chrome.storage?.session) {
+    return;
+  }
+  const stored: Record<string, GuideSessionState> = {};
+  for (const [tabId, session] of sessions) {
+    stored[String(tabId)] = session;
+  }
+  try {
+    await chrome.storage.session.set({ [GUIDE_SESSION_STORAGE_KEY]: stored });
+  } catch (error) {
+    console.error('Unable to persist the AIMS guide', error);
+  }
+}
+
+function ensureHydrated(): Promise<void> {
+  if (!hydratePromise) {
+    hydratePromise = (async () => {
+      if (!chrome.storage?.session) {
+        return;
+      }
+      try {
+        const stored = await chrome.storage.session.get(GUIDE_SESSION_STORAGE_KEY);
+        for (const session of readStoredSessions(stored[GUIDE_SESSION_STORAGE_KEY])) {
+          sessions.set(session.tabId, session);
+        }
+      } catch (error) {
+        console.error('Unable to restore AIMS guides', error);
+      }
+    })();
+  }
+  return hydratePromise;
+}
+
+function clearRetryTimers(tabId: number): void {
+  for (const timer of retryTimers.get(tabId) ?? []) {
+    clearTimeout(timer);
+  }
+  retryTimers.delete(tabId);
+}
+
+function clearReconcileTimer(tabId: number): void {
+  const timer = reconcileTimers.get(tabId);
+  if (timer) {
+    clearTimeout(timer);
+  }
+  reconcileTimers.delete(tabId);
+}
+
+async function clearOverlays(tabId: number): Promise<GuideResponse> {
+  const { frameIds } = await listFrameIds(tabId);
+  await broadcast(tabId, frameIds, { type: 'clear-guide', cancel: true });
+  return { ok: true, code: 'ok' };
+}
+
+async function dropSession(tabId: number, clearSpotlight: boolean): Promise<void> {
+  clearRetryTimers(tabId);
+  clearReconcileTimer(tabId);
+  sessions.delete(tabId);
+  await persistSessions();
+  if (clearSpotlight) {
+    await clearOverlays(tabId);
+  }
+}
+
+function notifyProgress(payload: { phase: 'showing' | 'finished'; stepIndex: number; stepCount: number }): void {
+  try {
+    chrome.runtime.sendMessage({ type: 'guide-progress', ...payload }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {
+    // The side panel may be closed.
+  }
+}
+
+function isRetryable(response: GuideResponse): boolean {
+  return response.code === 'element-not-found'
+    || response.code === 'element-not-visible'
+    || response.code === 'content-script-unavailable'
+    || response.code === 'no-ack'
+    || response.code === 'frame-scan-failed';
+}
+
+function scheduleRetries(tabId: number, generation: number): void {
+  clearRetryTimers(tabId);
+  const timers = RETRY_DELAYS_MS.map((delay) => setTimeout(() => {
+    void enqueue(tabId, async () => {
+      const session = sessions.get(tabId);
+      if (!session || session.generation !== generation) {
+        return;
+      }
+      await paintSession(tabId, false);
+    }).catch((error: unknown) => {
+      console.error('Unable to restore the AIMS spotlight', error);
+    });
+  }, delay));
+  retryTimers.set(tabId, timers);
+}
+
+function cancelledGuide(): GuideResponse {
+  return { ok: false, code: 'highlight-failed', reason: 'The guide was cancelled.' };
+}
+
+async function highlightInTab(
+  tabId: number,
+  selector: string,
+  guideText: string,
+  isCurrent: () => boolean = () => true
+): Promise<GuideResponse> {
+  if (!isCurrent()) {
+    return cancelledGuide();
+  }
+
   try {
     const tab = await chrome.tabs.get(tabId);
     if (tab.url && !isCityuUrl(tab.url)) {
@@ -155,10 +294,14 @@ async function highlightInTab(tabId: number, selector: string, guideText: string
   }
 
   await chrome.tabs.update(tabId, { active: true }).catch(() => undefined);
+  if (!isCurrent()) {
+    return cancelledGuide();
+  }
 
   const { frameIds, enumerated } = await listFrameIds(tabId);
-  await broadcast(tabId, frameIds, { type: 'clear-guide' });
-
+  if (!isCurrent()) {
+    return cancelledGuide();
+  }
   const showGuide: ShowGuideRequest = {
     type: 'show-guide',
     selector,
@@ -173,52 +316,166 @@ async function highlightInTab(tabId: number, selector: string, guideText: string
     })));
   };
 
-  const chooseSpotlight = async (delivered: Array<{ frameId: number; response: GuideResponse }>): Promise<GuideResponse | null> => {
-    const winners = delivered.filter((result) => result.response.ok);
-    if (!winners.length) {
+  const chooseSpotlight = async (
+    delivered: Array<{ frameId: number; response: GuideResponse }>
+  ): Promise<GuideResponse | null> => {
+    const winnerIndex = pickSpotlightWinner(delivered.map((result) => result.response));
+    if (winnerIndex < 0) {
       return null;
     }
 
-    const winner = winners[winners.length - 1];
-    await Promise.all(winners.slice(0, -1).map((result) => sendToFrame(tabId, result.frameId, { type: 'clear-guide' })));
+    const winner = delivered[winnerIndex];
+    await Promise.all(frameIds
+      .filter((frameId) => frameId !== winner.frameId)
+      .map((frameId) => sendToFrame(tabId, frameId, { type: 'clear-guide' })));
     return { ...winner.response, ok: true, frameId: winner.frameId, selector };
   };
 
   let results = await deliver();
+  if (!isCurrent()) {
+    await broadcast(tabId, frameIds, { type: 'clear-guide', cancel: true });
+    return cancelledGuide();
+  }
   let success = await chooseSpotlight(results);
   if (!success) {
     const missing = results.filter((result) => result.response.code === 'content-script-unavailable');
-    if (missing.length) {
+    if (missing.length && isCurrent()) {
       await Promise.all(missing.map((result) => injectContentScript(tabId, result.frameId)));
+      if (!isCurrent()) {
+        await broadcast(tabId, frameIds, { type: 'clear-guide', cancel: true });
+        return cancelledGuide();
+      }
       results = await deliver();
+      if (!isCurrent()) {
+        await broadcast(tabId, frameIds, { type: 'clear-guide', cancel: true });
+        return cancelledGuide();
+      }
       success = await chooseSpotlight(results);
     }
+  }
+
+  if (!isCurrent()) {
+    await broadcast(tabId, frameIds, { type: 'clear-guide', cancel: true });
+    return cancelledGuide();
   }
 
   if (success) {
     return success;
   }
 
+  // Leave a spotlight that is already showing the previous step until the next target exists.
   return summarizeFailure(selector, results.map((result) => result.response));
 }
 
-async function clearGuide(tabId: number | undefined): Promise<GuideResponse> {
-  const resolved = await resolveAimsTabId(tabId);
-  if (resolved === null) {
-    return { ok: false, code: 'no-tab', reason: 'Open a CityU AIMS tab (https://*.cityu.edu.hk) and try again.' };
+async function forgetPendingCompletion(): Promise<void> {
+  if (!chrome.storage?.session) {
+    return;
   }
-
-  const { frameIds } = await listFrameIds(resolved);
-  await broadcast(resolved, frameIds, { type: 'clear-guide' });
-  return { ok: true, code: 'ok' };
+  try {
+    await chrome.storage.session.remove(GUIDE_PENDING_COMPLETION_KEY);
+  } catch {
+    // A duplicate completion is ignored once the current selector no longer matches.
+  }
 }
 
-async function routeToAims(message: { selector?: unknown; guideText?: unknown; tabId?: unknown }): Promise<GuideResponse> {
-  const selector = typeof message.selector === 'string' ? message.selector.trim() : '';
-  if (!selector || selector === 'body') {
-    return { ok: false, code: 'no-selector', reason: 'No target selector was provided.' };
+async function readPendingCompletion(): Promise<{ selector?: unknown; at?: unknown } | null> {
+  if (!chrome.storage?.session) {
+    return null;
+  }
+  try {
+    const stored = await chrome.storage.session.get(GUIDE_PENDING_COMPLETION_KEY);
+    const pending = stored[GUIDE_PENDING_COMPLETION_KEY];
+    if (!pending || typeof pending !== 'object') {
+      return null;
+    }
+    return pending as { selector?: unknown; at?: unknown };
+  } catch {
+    return null;
+  }
+}
+
+async function applyPendingCompletion(tabId: number): Promise<void> {
+  const session = sessions.get(tabId);
+  if (!session) {
+    return;
+  }
+  const pending = await readPendingCompletion();
+  if (!pendingCompletionAdvances(session, pending, Date.now())) {
+    return;
   }
 
+  await forgetPendingCompletion();
+  const outcome = completeGuideStep(session, pending.selector as string);
+  if (outcome.status === 'ignored') {
+    return;
+  }
+  if (outcome.status === 'finished') {
+    await dropSession(tabId, true);
+    notifyProgress({ phase: 'finished', stepIndex: session.steps.length, stepCount: session.steps.length });
+    return;
+  }
+  sessions.set(tabId, outcome.session);
+  await persistSessions();
+}
+
+async function paintSession(tabId: number, allowRetry: boolean): Promise<GuideResponse> {
+  await applyPendingCompletion(tabId);
+  const session = sessions.get(tabId);
+  if (!session) {
+    return { ok: true, code: 'ok' };
+  }
+
+  const generation = session.generation;
+  const step = currentGuideStep(session);
+  if (!step) {
+    await dropSession(tabId, true);
+    return { ok: true, code: 'ok' };
+  }
+
+  const response = await highlightInTab(tabId, step.targetSelector, step.guideText, () => {
+    return sessions.get(tabId)?.generation === generation;
+  });
+  const latest = sessions.get(tabId);
+  if (!latest || latest.generation !== generation) {
+    return response;
+  }
+
+  if (response.ok) {
+    clearRetryTimers(tabId);
+    if (latest.stepIndex > 0) {
+      notifyProgress({
+        phase: 'showing',
+        stepIndex: latest.stepIndex,
+        stepCount: latest.steps.length
+      });
+    }
+  } else if (allowRetry && isRetryable(response)) {
+    scheduleRetries(tabId, generation);
+  }
+  return response;
+}
+
+function scheduleReconcile(tabId: number): void {
+  if (!sessions.has(tabId)) {
+    return;
+  }
+  clearReconcileTimer(tabId);
+  reconcileTimers.set(tabId, setTimeout(() => {
+    reconcileTimers.delete(tabId);
+    void enqueue(tabId, () => paintSession(tabId, true)).catch((error: unknown) => {
+      console.error('Unable to restore the AIMS guide', error);
+    });
+  }, 200));
+}
+
+async function startGuide(message: {
+  selector?: unknown;
+  guideText?: unknown;
+  workflowKey?: unknown;
+  steps?: unknown;
+  tabId?: unknown;
+}): Promise<GuideResponse> {
+  await ensureHydrated();
   const explicitTabId = typeof message.tabId === 'number' ? message.tabId : undefined;
   const tabId = await resolveAimsTabId(explicitTabId);
   if (tabId === null) {
@@ -229,8 +486,80 @@ async function routeToAims(message: { selector?: unknown; guideText?: unknown; t
     };
   }
 
-  const guideText = typeof message.guideText === 'string' ? message.guideText : '';
-  return highlightInTab(tabId, selector, guideText);
+  const steps = sanitizeGuideSteps(message.steps);
+  if (!steps.length && typeof message.selector === 'string') {
+    steps.push({
+      stepId: 1,
+      targetSelector: message.selector.trim(),
+      guideText: typeof message.guideText === 'string' ? message.guideText.trim() : ''
+    });
+  }
+  const usable = sanitizeGuideSteps(steps);
+  if (!usable.length) {
+    return { ok: false, code: 'no-selector', reason: 'No target selector was provided.' };
+  }
+
+  const workflowKey = typeof message.workflowKey === 'string' ? message.workflowKey : 'aims-guide';
+  return enqueue(tabId, async () => {
+    clearRetryTimers(tabId);
+    clearReconcileTimer(tabId);
+    await forgetPendingCompletion();
+    const session = createGuideSession({ tabId, workflowKey, steps: usable });
+    if (!session) {
+      return { ok: false, code: 'no-selector', reason: 'No target selector was provided.' };
+    }
+    sessions.set(tabId, session);
+    await persistSessions();
+    return paintSession(tabId, true);
+  });
+}
+
+async function completeStepAndHighlight(tabId: number, selector: string): Promise<GuideResponse> {
+  await ensureHydrated();
+  return enqueue(tabId, async () => {
+    await forgetPendingCompletion();
+    const session = sessions.get(tabId);
+    if (!session) {
+      return { ok: false, code: 'no-selector', reason: 'No AIMS guide is active.' };
+    }
+
+    const outcome = completeGuideStep(session, selector);
+    if (outcome.status === 'ignored') {
+      return { ok: true, code: 'ok' };
+    }
+
+    clearRetryTimers(tabId);
+    if (outcome.status === 'finished') {
+      await dropSession(tabId, true);
+      notifyProgress({ phase: 'finished', stepIndex: session.steps.length, stepCount: session.steps.length });
+      return { ok: true, code: 'ok' };
+    }
+
+    sessions.set(tabId, outcome.session);
+    await persistSessions();
+    return paintSession(tabId, true);
+  });
+}
+
+async function cancelGuide(tabId: number | undefined): Promise<GuideResponse> {
+  await ensureHydrated();
+  const resolved = await resolveAimsTabId(tabId);
+  if (resolved === null) {
+    return { ok: false, code: 'no-tab', reason: 'Open a CityU AIMS tab (https://*.cityu.edu.hk) and try again.' };
+  }
+  return enqueue(resolved, async () => {
+    await forgetPendingCompletion();
+    await dropSession(resolved, true);
+    return { ok: true, code: 'ok' } satisfies GuideResponse;
+  });
+}
+
+function failureResponse(error: unknown, fallback: string): GuideResponse {
+  return {
+    ok: false,
+    code: 'highlight-failed',
+    reason: error instanceof Error ? error.message : fallback
+  };
 }
 
 const router = (): void => {
@@ -238,8 +567,29 @@ const router = (): void => {
     return;
   }
 
+  void ensureHydrated();
+
   void chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch((error: unknown) => {
     console.error('Unable to enable side panel on extension icon click:', error);
+  });
+
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    void ensureHydrated().then(() => dropSession(tabId, false)).catch((error: unknown) => {
+      console.error('Unable to drop the AIMS guide for a closed tab', error);
+    });
+  });
+
+  chrome.tabs.onUpdated.addListener((tabId, info) => {
+    if (info.status !== 'complete') {
+      return;
+    }
+    void ensureHydrated().then(() => {
+      if (sessions.has(tabId)) {
+        scheduleReconcile(tabId);
+      }
+    }).catch((error: unknown) => {
+      console.error('Unable to restore the AIMS guide after navigation', error);
+    });
   });
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -252,26 +602,52 @@ const router = (): void => {
       return true;
     }
 
-    if (message?.type === 'route-to-aims') {
+    if (message?.type === 'route-to-aims' || message?.type === 'start-guide') {
       const explicitTabId = typeof message.tabId === 'number' ? message.tabId : sender.tab?.id;
-      void routeToAims({ ...message, tabId: explicitTabId }).then(sendResponse, (error: unknown) => {
-        sendResponse({
-          ok: false,
-          code: 'highlight-failed',
-          reason: error instanceof Error ? error.message : 'Highlight failed.'
-        } satisfies GuideResponse);
+      void startGuide({ ...message, tabId: explicitTabId }).then(sendResponse, (error: unknown) => {
+        sendResponse(failureResponse(error, 'Highlight failed.'));
       });
       return true;
     }
 
+    if (message?.type === 'guide-step-done') {
+      const tabId = sender.tab?.id;
+      const selector = typeof message.selector === 'string' ? message.selector : '';
+      if (typeof tabId !== 'number' || !selector) {
+        sendResponse({ ok: false, code: 'no-tab', reason: 'The AIMS guide could not tell which tab advanced.' });
+        return false;
+      }
+      void completeStepAndHighlight(tabId, selector).then(sendResponse, (error: unknown) => {
+        sendResponse(failureResponse(error, 'Could not advance the AIMS guide.'));
+      });
+      return true;
+    }
+
+    if (message?.type === 'guide-frame-ready') {
+      const tabId = sender.tab?.id;
+      if (typeof tabId === 'number') {
+        void ensureHydrated().then(() => {
+          if (sessions.has(tabId)) {
+            scheduleReconcile(tabId);
+          }
+        }).catch(() => undefined);
+      }
+      sendResponse({ ok: true, code: 'ok' });
+      return false;
+    }
+
     if (message?.type === 'clear-guide') {
       const explicitTabId = typeof message.tabId === 'number' ? message.tabId : sender.tab?.id;
-      void clearGuide(explicitTabId).then(sendResponse, (error: unknown) => {
-        sendResponse({
-          ok: false,
-          code: 'highlight-failed',
-          reason: error instanceof Error ? error.message : 'Could not clear the spotlight.'
-        } satisfies GuideResponse);
+      const task = message.cancel === true
+        ? cancelGuide(explicitTabId)
+        : resolveAimsTabId(explicitTabId).then(async (resolved) => {
+          if (resolved === null) {
+            return { ok: false, code: 'no-tab', reason: 'Open a CityU AIMS tab (https://*.cityu.edu.hk) and try again.' } satisfies GuideResponse;
+          }
+          return clearOverlays(resolved);
+        });
+      void task.then(sendResponse, (error: unknown) => {
+        sendResponse(failureResponse(error, 'Could not clear the spotlight.'));
       });
       return true;
     }

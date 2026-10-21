@@ -171,6 +171,108 @@
   window.scrollTo(0, 0);
   const finalDraw = api.injectGlassSpotlight(reg, guide);
   check('final-spotlight', finalDraw.ok === true, JSON.stringify(finalDraw));
+
+  const liveSelector = "a[href*='bmenu.P_RegMenu']";
+  const completions = [];
+  const armed = api.armPageGuide({
+    selector: liveSelector,
+    guideText: guide,
+    onComplete(selector) {
+      completions.push(selector);
+    }
+  });
+  check('guide-armed', armed.ok === true, JSON.stringify(armed));
+
+  const replacement = document.createElement('a');
+  replacement.id = 'reg-live';
+  replacement.href = reg.href;
+  replacement.textContent = 'Course Registration';
+  replacement.style.cssText = 'display:inline-block;padding:8px 12px;color:#fff';
+  reg.replaceWith(replacement);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const replacedHost = document.getElementById(api.SPOTLIGHT_HOST_ID);
+  const replacedRing = replacedHost?.shadowRoot?.querySelector('.cityu-ring');
+  check('spotlight-survives-replace', Boolean(replacedHost && replacedRing), 'spotlight disappeared when the menu link was replaced');
+  if (replacedRing) {
+    const linkRect = replacement.getBoundingClientRect();
+    const ringRect = replacedRing.getBoundingClientRect();
+    check(
+      'replaced-ring-aligned',
+      Math.abs(ringRect.left - (linkRect.left - api.SPOTLIGHT_PAD)) < 3 && Math.abs(ringRect.top - (linkRect.top - api.SPOTLIGHT_PAD)) < 3,
+      JSON.stringify({ linkRect, ringRect })
+    );
+  }
+
+  document.addEventListener('click', (event) => {
+    if (event.target === replacement) {
+      event.preventDefault();
+    }
+  }, true);
+  replacement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+  check('step-completed', completions.length === 1 && completions[0] === liveSelector, JSON.stringify(completions));
+  replacement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+  check('step-completed-once', completions.length === 1, JSON.stringify(completions));
+  check('spotlight-held-after-click', Boolean(document.getElementById(api.SPOTLIGHT_HOST_ID)), 'spotlight was removed before the next step was ready');
+
+  const weeklyLink = document.createElement('a');
+  weeklyLink.id = 'weekly-live';
+  weeklyLink.href = '/pls/PROD/hwsstmtbl_matrix_cityu.Show';
+  weeklyLink.textContent = 'Weekly Schedule';
+  weeklyLink.style.cssText = 'display:inline-block;margin-left:8px;padding:8px 12px;color:#fff';
+  replacement.parentElement?.appendChild(weeklyLink);
+  const nextGuide = api.armPageGuide({
+    selector: "a[href*='hwsstmtbl_matrix_cityu.Show']",
+    guideText: 'Click Weekly Schedule',
+    onComplete() {}
+  });
+  check('step-two-armed', nextGuide.ok === true, JSON.stringify(nextGuide));
+  const nextRing = document.getElementById(api.SPOTLIGHT_HOST_ID)?.shadowRoot?.querySelector('.cityu-ring');
+  if (nextRing) {
+    const linkRect = weeklyLink.getBoundingClientRect();
+    const ringRect = nextRing.getBoundingClientRect();
+    check(
+      'step-two-aligned',
+      Math.abs(ringRect.left - (linkRect.left - api.SPOTLIGHT_PAD)) < 3 && Math.abs(ringRect.top - (linkRect.top - api.SPOTLIGHT_PAD)) < 3,
+      JSON.stringify({ linkRect, ringRect })
+    );
+  } else {
+    check('step-two-aligned', false, 'step 2 spotlight was not drawn');
+  }
+
+  const form = document.createElement('form');
+  const hiddenPin = document.createElement('input');
+  hiddenPin.type = 'hidden';
+  hiddenPin.name = 'pin_token';
+  form.appendChild(hiddenPin);
+  document.body.appendChild(form);
+  const decoy = document.createElement('div');
+  decoy.id = 'api-key';
+  decoy.className = 'account-panel';
+  document.body.appendChild(decoy);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  check('hidden-fields-keep-spotlight', Boolean(document.getElementById(api.SPOTLIGHT_HOST_ID)), 'inserting hidden Banner fields cleared the spotlight');
+
+  const field = document.createElement('input');
+  field.id = 'p_table';
+  field.style.cssText = 'display:block;width:180px;height:32px;margin:12px';
+  document.body.appendChild(field);
+  let typedSteps = 0;
+  const typedGuide = api.armPageGuide({
+    selector: 'input#p_table',
+    guideText: 'Type master',
+    onComplete() {
+      typedSteps += 1;
+    }
+  });
+  check('input-step-armed', typedGuide.ok === true, JSON.stringify(typedGuide));
+  field.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+  check('input-click-holds', typedSteps === 0, 'clicking a text field advanced the guide');
+  field.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+  check('input-enter-advances', typedSteps === 1, 'Enter did not advance the text field step');
+
+  api.disarmPageGuide();
+  check('guide-disarmed', document.getElementById(api.SPOTLIGHT_HOST_ID) === null, 'disarm left the spotlight host');
+  api.injectGlassSpotlight(weeklyLink, 'Click Weekly Schedule');
   document.documentElement.dataset.spotlight = failures.length === 0 ? 'ready' : 'failed';
   write({ ok: failures.length === 0, failures });
 })().catch((error) => {

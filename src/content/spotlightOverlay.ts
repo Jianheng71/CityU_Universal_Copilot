@@ -10,11 +10,25 @@ import {
 
 type Cleanup = () => void;
 
+const SPOTLIGHT_MISS_GRACE_MS = 800;
+
 let generation = 0;
 let removing = false;
 let shadowHost: HTMLElement | null = null;
 let activeTarget: Element | null = null;
 let unlisten: Cleanup | null = null;
+
+export function spotlightCovers(selector: string): boolean {
+  if (!shadowHost?.isConnected || !activeTarget?.isConnected) {
+    return false;
+  }
+
+  try {
+    return activeTarget.matches(selector);
+  } catch {
+    return false;
+  }
+}
 
 function viewOf(element: Element): Window | null {
   return element.ownerDocument?.defaultView ?? null;
@@ -48,9 +62,19 @@ export type SpotlightResult =
   | { ok: true }
   | { ok: false; code: 'element-not-visible' | 'highlight-failed'; reason: string };
 
-export function injectGlassSpotlight(targetElement: Element, guideText: string): SpotlightResult {
+export type SpotlightOptions = {
+  resolveTarget?: () => Element | null;
+};
+
+export function injectGlassSpotlight(
+  targetElement: Element,
+  guideText: string,
+  options?: SpotlightOptions
+): SpotlightResult {
   removeSpotlight();
   const token = generation;
+  const resolveTarget = options?.resolveTarget;
+  let missingSince = 0;
   const doc = targetElement.ownerDocument;
   const view = doc?.defaultView ?? null;
   const root = doc?.body ?? doc?.documentElement ?? null;
@@ -169,8 +193,33 @@ export function injectGlassSpotlight(targetElement: Element, guideText: string):
     }
 
     if (!activeTarget.isConnected) {
-      removeSpotlight();
-      return;
+      let replacement: Element | null = null;
+      try {
+        replacement = resolveTarget?.() ?? null;
+      } catch {
+        replacement = null;
+      }
+
+      if (replacement && replacement.isConnected) {
+        if (replacement !== activeTarget) {
+          activeTarget.removeAttribute(GUIDE_TARGET_ATTR);
+          replacement.setAttribute(GUIDE_TARGET_ATTR, 'true');
+          activeTarget = replacement;
+        }
+        missingSince = 0;
+      } else {
+        const now = view.performance?.now() ?? Date.now();
+        if (missingSince === 0) {
+          missingSince = now;
+        }
+        if (now - missingSince < SPOTLIGHT_MISS_GRACE_MS) {
+          return;
+        }
+        removeSpotlight();
+        return;
+      }
+    } else {
+      missingSince = 0;
     }
 
     const nextTarget = readBox(activeTarget);

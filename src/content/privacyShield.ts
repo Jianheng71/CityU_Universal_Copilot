@@ -1,74 +1,92 @@
 import { SPOTLIGHT_HOST_ID } from './constants';
 
-const SAFE_ATTRIBUTE_KEYS = [
-  'name',
-  'id',
-  'autocomplete',
-  'aria-label',
-  'placeholder',
-  'class',
-  'data-testid',
-  'data-field',
-  'data-sensitive'
-];
+const FIELD_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+const SECRET_TOKENS = ['password', 'passwd', 'pwd', 'passcode', 'pin', 'otp', 'hkid', 'passport', 'ssn', 'cvv'];
 
-const SENSITIVE_TOKENS = [
-  'password',
-  'passwd',
-  'pwd',
-  'passcode',
-  'pin',
-  'secret',
-  'token',
-  'api',
-  'key',
-  'passport',
-  'hkid',
-  'eid',
-  'studentid',
-  'student_id',
-  'nationalid',
-  'national_id',
-  'idnumber',
-  'creditcard',
-  'bank',
-  'routing',
-  'account',
-  'cvv',
-  'ssn'
-];
+export type SensitiveFieldMeta = {
+  tagName: string;
+  inputType?: string;
+  autocomplete?: string;
+  id?: string;
+  name?: string;
+  placeholder?: string;
+  ariaLabel?: string;
+  dataSensitive?: string | null;
+  spotlightHost?: boolean;
+};
+
+function containsToken(haystack: string, token: string): boolean {
+  let from = 0;
+  while (from <= haystack.length - token.length) {
+    const at = haystack.indexOf(token, from);
+    if (at < 0) {
+      return false;
+    }
+    const before = at === 0 ? '' : haystack.charAt(at - 1);
+    const after = haystack.charAt(at + token.length);
+    const boundary = (char: string): boolean => char === '' || !/[a-z0-9]/i.test(char);
+    if (boundary(before) && boundary(after)) {
+      return true;
+    }
+    from = at + token.length;
+  }
+  return false;
+}
+
+export function isSensitiveFieldMeta(meta: SensitiveFieldMeta): boolean {
+  if (meta.spotlightHost) {
+    return false;
+  }
+
+  const marked = (meta.dataSensitive ?? '').trim().toLowerCase();
+  if (marked && marked !== 'false' && marked !== '0') {
+    return true;
+  }
+
+  const tag = meta.tagName.toUpperCase();
+  const inputType = (meta.inputType ?? '').toLowerCase();
+  if (tag === 'INPUT' && inputType === 'password') {
+    return true;
+  }
+
+  const autocomplete = (meta.autocomplete ?? '').toLowerCase();
+  if (
+    autocomplete.includes('cc-number') ||
+    autocomplete.includes('current-password') ||
+    autocomplete.includes('new-password')
+  ) {
+    return true;
+  }
+
+  if (!FIELD_TAGS.has(tag) || inputType === 'hidden') {
+    return false;
+  }
+
+  const haystack = [meta.id, meta.name, meta.autocomplete, meta.placeholder, meta.ariaLabel]
+    .filter((part): part is string => Boolean(part))
+    .join(' ')
+    .toLowerCase();
+
+  return SECRET_TOKENS.some((token) => containsToken(haystack, token));
+}
 
 export function isSensitiveElement(element: HTMLElement): boolean {
-  if (!(element instanceof HTMLElement) || element.id === SPOTLIGHT_HOST_ID) {
+  if (!(element instanceof HTMLElement)) {
     return false;
   }
 
   const inputNode = element instanceof HTMLInputElement ? element : null;
-  const type = inputNode?.type?.toLowerCase() ?? '';
-
-  if (inputNode && (type === 'password' || type === 'hidden')) {
-    return true;
-  }
-
-  const combinedText = SAFE_ATTRIBUTE_KEYS.map((attributeName) => {
-    const value = element.getAttribute(attributeName);
-    return value ?? '';
-  }).join(' ').toLowerCase();
-
-  const normalized = `${element.tagName} ${combinedText}`;
-
-  if (normalized.includes('password') || normalized.includes('passport')) {
-    return true;
-  }
-
-  if (inputNode && inputNode.autocomplete) {
-    const autocomplete = inputNode.autocomplete.toLowerCase();
-    if (autocomplete.includes('cc-number') || autocomplete.includes('current-password') || autocomplete.includes('new-password')) {
-      return true;
-    }
-  }
-
-  return SENSITIVE_TOKENS.some((token) => normalized.includes(token));
+  return isSensitiveFieldMeta({
+    tagName: element.tagName,
+    inputType: inputNode ? inputNode.type : (element.getAttribute('type') ?? ''),
+    autocomplete: inputNode?.autocomplete || element.getAttribute('autocomplete') || '',
+    id: element.id,
+    name: element.getAttribute('name') ?? '',
+    placeholder: element.getAttribute('placeholder') ?? '',
+    ariaLabel: element.getAttribute('aria-label') ?? '',
+    dataSensitive: element.getAttribute('data-sensitive'),
+    spotlightHost: element.id === SPOTLIGHT_HOST_ID
+  });
 }
 
 export function initDynamicPrivacyShield(onTriggerPrivacy: () => void): void {
@@ -115,7 +133,7 @@ export function initDynamicPrivacyShield(onTriggerPrivacy: () => void): void {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['type', 'name', 'id', 'autocomplete', 'placeholder', 'aria-label', 'class', 'data-sensitive']
+      attributeFilter: ['type', 'name', 'id', 'autocomplete', 'placeholder', 'aria-label', 'data-sensitive']
     });
   }
 
@@ -125,7 +143,6 @@ export function initDynamicPrivacyShield(onTriggerPrivacy: () => void): void {
     observer.disconnect();
   };
 
-  // Expose cleanup in a stable way on the window for callers that need it.
   if (typeof window !== 'undefined') {
     (window as typeof window & { __cityuPrivacyCleanup?: () => void }).__cityuPrivacyCleanup = cleanup;
   }
