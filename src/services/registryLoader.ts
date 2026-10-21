@@ -37,17 +37,23 @@ const intentAliases: Record<string, string[]> = {
   'aims-student-helper-job-search': ['student helper', 'internship', '学生助理', '校内实习']
 };
 
+async function readCachedRegistry(): Promise<WorkflowCollection | null> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+    return null;
+  }
+
+  const result = await chrome.storage.local.get('aims-workflows');
+  const stored = result['aims-workflows'];
+  if (stored && typeof stored === 'object' && 'workflows' in stored) {
+    return stored as WorkflowCollection;
+  }
+
+  return null;
+}
+
 export async function loadWorkflowRegistry(): Promise<WorkflowCollection | null> {
   try {
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      const result = await chrome.storage.local.get('aims-workflows');
-      const stored = result['aims-workflows'];
-      if (stored && typeof stored === 'object' && 'workflows' in stored) {
-        return stored as WorkflowCollection;
-      }
-    }
-
-    const response = await fetch(FALLBACK_RAW_URL, { method: 'GET' });
+    const response = await fetch(FALLBACK_RAW_URL, { method: 'GET', cache: 'no-store' });
     if (!response.ok) {
       throw new Error('Registry fetch failed');
     }
@@ -58,6 +64,15 @@ export async function loadWorkflowRegistry(): Promise<WorkflowCollection | null>
     }
     return parsed;
   } catch {
+    try {
+      const cached = await readCachedRegistry();
+      if (cached) {
+        return cached;
+      }
+    } catch {
+      // Cache is only a fallback when the published registry cannot be fetched.
+    }
+
     try {
       const docsResponse = await fetch(CITYU_DOCS_URL, { method: 'GET' });
       if (!docsResponse.ok) {

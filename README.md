@@ -4,7 +4,7 @@
 
 ## 下载并安装 Chrome 扩展（无需本地终端）
 
-**[点击直接下载 Chrome 扩展 ZIP（v0.1.5）](https://github.com/Jianheng71/CityU_Universal_Copilot/releases/download/v0.1.5/CityU-Universal-Sinno-Chrome-v0.1.5.zip)**。此版本会在 CityU 页面及其框架中注入聚光灯，用全屏遮罩和挖空高亮目标，并在找不到元素时显示具体错误；下载后解压并按下面步骤安装。
+**[点击直接下载 Chrome 扩展 ZIP（v0.1.6）](https://github.com/Jianheng71/CityU_Universal_Copilot/releases/download/v0.1.6/CityU-Universal-Sinno-Chrome-v0.1.6.zip)**。此版本按 2026-10-21 核对过的 AIMS 菜单路径高亮 Course Registration、Study Plan 与 Student Services，并继续在 CityU 页面及其框架中用全屏遮罩和挖空高亮目标；下载后解压并按下面步骤安装。
 
 1. 下载并在 Finder 中解压 ZIP。
 2. Chrome 打开 `chrome://extensions`，开启 **开发者模式**，点击 **加载已解压的扩展程序**，选择解压后含有 `manifest.json` 的文件夹。
