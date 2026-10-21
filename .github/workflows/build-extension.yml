@@ -3,7 +3,9 @@ name: Build Chrome extension
 on:
   push:
     branches:
+      - main
       - jianheng71-bugfix
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -24,8 +26,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test spotlight helpers
+        run: npm test
+
       - name: Build Chrome extension
         run: npm run build
+
+      - name: Check packaged content script
+        run: npm run check:manifest
 
       - name: Upload unpacked Chrome extension
         uses: actions/upload-artifact@v4
