@@ -4,7 +4,7 @@
 
 ## 下载并安装 Chrome 扩展（无需本地终端）
 
-**[点击直接下载 Chrome 扩展 ZIP（v0.1.7）](https://github.com/Jianheng71/CityU_Universal_Copilot/releases/download/v0.1.7/CityU-Universal-Sinno-Chrome-v0.1.7.zip)**。此版本按 2026-10-21 核对过的 AIMS 菜单路径引导多步操作：聚光灯会停在当前步骤，点击后自动移到下一步（例如每周课表的 Course Registration → Weekly Schedule），并在页面或框架重新加载后重新挂上；下载后解压并按下面步骤安装。
+**[点击直接下载 Chrome 扩展 ZIP（v0.1.7）](https://github.com/Jianheng71/CityU_Universal_Copilot/releases/download/v0.1.7/CityU-Universal-Sinno-Chrome-v0.1.7.zip)**。源码里的扩展版本是 0.1.8：侧边栏里的每个问题都会在 AIMS 页面上保持聚光灯。已核对的菜单路径（每周课表、加退选、学业进度等）会跟着页面一直高亮，直到打开真正的目标页才结束；没有对应菜单路径的问题会高亮 Find a Page，并在离开该页进入下一个 AIMS 页面后结束。上面的安装包仍是已发布的 v0.1.7，合并本改动后需要重新打包。下载后解压并按下面步骤安装。
 
 1. 下载并在 Finder 中解压 ZIP。
 2. Chrome 打开 `chrome://extensions`，开启 **开发者模式**，点击 **加载已解压的扩展程序**，选择解压后含有 `manifest.json` 的文件夹。

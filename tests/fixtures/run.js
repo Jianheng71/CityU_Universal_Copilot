@@ -270,6 +270,47 @@
   field.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
   check('input-enter-advances', typedSteps === 1, 'Enter did not advance the text field step');
 
+  check('spotlight-before-missing-step', Boolean(document.getElementById(api.SPOTLIGHT_HOST_ID)), 'spotlight was already gone before the next step was missing');
+  const missingNext = api.armPageGuide({
+    selector: "a[href*='bwskfreg.P_AddCrse']",
+    guideText: 'Click Add',
+    onComplete() {}
+  });
+  check('missing-next-step', missingNext.ok === false && missingNext.code === 'element-not-found', JSON.stringify(missingNext));
+  check('spotlight-held-while-next-missing', Boolean(document.getElementById(api.SPOTLIGHT_HOST_ID)), 'spotlight disappeared while the next target was not on the page');
+
+  const late = document.createElement('a');
+  late.id = 'late-link';
+  late.href = '/pls/PROD/bwskfreg.P_AddCrse';
+  late.textContent = 'Add';
+  late.style.cssText = 'display:inline-block;margin-left:8px;padding:8px 12px';
+  document.body.appendChild(late);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const lateHost = document.getElementById(api.SPOTLIGHT_HOST_ID);
+  const lateTip = lateHost?.shadowRoot?.querySelector('.cityu-tooltip');
+  check('late-target-draws', late.getAttribute(api.GUIDE_TARGET_ATTR) === 'true', 'spotlight did not move onto the target after it mounted');
+  check('late-target-text', lateTip?.textContent === 'Click Add', lateTip?.textContent ?? 'missing tooltip');
+  document.body.appendChild(document.createElement('span'));
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  check('late-target-stays', Boolean(document.getElementById(api.SPOTLIGHT_HOST_ID)) && late.getAttribute(api.GUIDE_TARGET_ATTR) === 'true', 'spotlight disappeared after an unrelated page change');
+
+  api.disarmPageGuide();
+  const pending = api.armPageGuide({
+    selector: "a[href*='bwskfreg.P_LateOnly']",
+    guideText: 'Wait for the link',
+    onComplete() {}
+  });
+  check('pending-without-target', pending.ok === false && pending.code === 'element-not-found', JSON.stringify(pending));
+  check('pending-draws-nothing-yet', document.getElementById(api.SPOTLIGHT_HOST_ID) === null, 'a missing target drew an empty spotlight');
+  const delayed = document.createElement('a');
+  delayed.id = 'delayed-link';
+  delayed.href = '/pls/PROD/bwskfreg.P_LateOnly';
+  delayed.textContent = 'Later';
+  delayed.style.cssText = 'display:inline-block;padding:8px 12px';
+  document.body.appendChild(delayed);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  check('pending-draws-when-mounted', delayed.getAttribute(api.GUIDE_TARGET_ATTR) === 'true', 'spotlight did not appear when the delayed target mounted');
+
   api.disarmPageGuide();
   check('guide-disarmed', document.getElementById(api.SPOTLIGHT_HOST_ID) === null, 'disarm left the spotlight host');
   api.injectGlassSpotlight(weeklyLink, 'Click Weekly Schedule');

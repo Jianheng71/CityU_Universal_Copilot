@@ -13,6 +13,7 @@ await esbuild.build({
     'tests/aims-workflows.test.ts',
     'tests/aimsTab.test.ts',
     'tests/guideSession.test.ts',
+    'tests/planner.test.ts',
     'tests/privacyShield.test.ts',
     'tests/spotlightGeometry.test.ts',
     'tests/source-guards.test.ts'
