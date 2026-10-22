@@ -6,14 +6,16 @@ export type PageGuideArm = {
   selector: string;
   guideText: string;
   searchFrames?: boolean;
-  onComplete?: (selector: string) => void;
+  guideToken?: string;
+  onComplete?: (selector: string, departureUrl: string) => void;
 };
 
 type ArmedGuide = {
   selector: string;
   guideText: string;
   searchFrames: boolean;
-  onComplete?: (selector: string) => void;
+  guideToken: string;
+  onComplete?: (selector: string, departureUrl: string) => void;
 };
 
 let armed: ArmedGuide | null = null;
@@ -120,19 +122,27 @@ function drawArmed(target: Element): GuideResponse {
     return { ok: false, code: 'no-selector', reason: 'No guide is active in this frame.' };
   }
 
+  const doc = target.ownerDocument ?? document;
+  if (!elementLooksVisible(target)) {
+    watchDocument(doc);
+    return {
+      ok: false,
+      code: 'element-not-visible',
+      reason: 'The AIMS element has no visible size to highlight.'
+    };
+  }
+
   const selector = armed.selector;
   const drawn = injectGlassSpotlight(target, armed.guideText, {
     resolveTarget: () => resolveArmed(selector)
   });
   if (!drawn.ok) {
+    watchDocument(doc);
     return drawn;
   }
 
-  const doc = target.ownerDocument;
-  if (doc) {
-    bindActivation(doc);
-    watchDocument(doc);
-  }
+  bindActivation(doc);
+  watchDocument(doc);
   return { ok: true, code: 'ok', selector, visible: elementLooksVisible(target) };
 }
 
@@ -147,6 +157,21 @@ function ensureArmedSpotlight(): void {
   drawArmed(found.element);
 }
 
+function activatedTarget(raw: Element): Element | null {
+  if (!armed) {
+    return null;
+  }
+  const found = findHighlightTarget(document, armed.selector, armed.searchFrames);
+  const target = found.element;
+  if (!target || found.invalid) {
+    return null;
+  }
+  if (raw === target || target.contains(raw)) {
+    return target;
+  }
+  return null;
+}
+
 function onActivate(event: Event): void {
   if (!armed || notified) {
     return;
@@ -156,12 +181,7 @@ function onActivate(event: Event): void {
     return;
   }
 
-  let match: Element | null = null;
-  try {
-    match = raw.closest(armed.selector);
-  } catch {
-    return;
-  }
+  const match = activatedTarget(raw);
   if (!match) {
     return;
   }
@@ -193,8 +213,9 @@ function onActivate(event: Event): void {
 
   notified = true;
   const selector = armed.selector;
+  const departureUrl = window.location.href;
   try {
-    armed.onComplete?.(selector);
+    armed.onComplete?.(selector, departureUrl);
   } catch {
     // Completion still sticks when the notifier fails. The next page can restore the guide.
   }
@@ -215,8 +236,10 @@ export function armPageGuide(guide: PageGuideArm): GuideResponse {
   }
 
   const searchFrames = guide.searchFrames === true;
-  if (armed && armed.selector === selector && armed.guideText === guide.guideText && spotlightCovers(selector)) {
-    armed = { selector, guideText: guide.guideText, searchFrames, onComplete: guide.onComplete };
+  const guideToken = guide.guideToken ?? '';
+  const sameStep = Boolean(armed && armed.selector === selector && armed.guideText === guide.guideText && armed.guideToken === guideToken);
+  if (sameStep && spotlightCovers(selector)) {
+    armed = { selector, guideText: guide.guideText, searchFrames, guideToken, onComplete: guide.onComplete };
     const existing = findHighlightTarget(document, selector, searchFrames);
     if (existing.element?.ownerDocument) {
       bindActivation(existing.element.ownerDocument);
@@ -239,6 +262,14 @@ export function armPageGuide(guide: PageGuideArm): GuideResponse {
     };
   }
   if (!found.element) {
+    // Keep a spotlight that is already showing the previous step. Watch this
+    // document so the highlight appears when the next target is inserted,
+    // including after a navigation that has not finished rendering.
+    if (!sameStep) {
+      notified = false;
+    }
+    armed = { selector, guideText: guide.guideText, searchFrames, guideToken, onComplete: guide.onComplete };
+    watchDocument(document);
     return {
       ok: false,
       code: 'element-not-found',
@@ -246,7 +277,9 @@ export function armPageGuide(guide: PageGuideArm): GuideResponse {
     };
   }
 
-  notified = false;
-  armed = { selector, guideText: guide.guideText, searchFrames, onComplete: guide.onComplete };
+  if (!sameStep) {
+    notified = false;
+  }
+  armed = { selector, guideText: guide.guideText, searchFrames, guideToken, onComplete: guide.onComplete };
   return drawArmed(found.element);
 }

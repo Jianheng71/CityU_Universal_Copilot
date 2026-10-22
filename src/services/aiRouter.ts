@@ -53,26 +53,7 @@ export async function setAISettings(next: Partial<AISettings>): Promise<void> {
 }
 
 export async function resolveWorkflowIntent(intent: string): Promise<WorkflowConfig | null> {
-  const workflow = await findWorkflowByIntent(intent);
-  if (workflow) {
-    return workflow;
-  }
-
-  const docsFallback = {
-    workflowKey: 'docs-fallback',
-    title: { en: 'Academic resources help', zh: '学术资源帮助' },
-    category: 'docs',
-    steps: [{
-      stepId: 1,
-      guideText: {
-        en: 'Use the CityU academic resources portal for system guidance.',
-        zh: '请使用城大学术资源门户获取系统操作说明。'
-      },
-      targetSelector: 'body'
-    }]
-  } satisfies WorkflowConfig;
-
-  return docsFallback;
+  return findWorkflowByIntent(intent);
 }
 
 export async function routeModelRequest(intent: string): Promise<{ provider: AIProvider; workflow: WorkflowConfig | null; response: string }> {

@@ -43,17 +43,17 @@ const privacyTrigger = (): void => {
   void showPrivacyNotice();
 };
 
-function publishStepCompletion(selector: string): void {
+function publishStepCompletion(selector: string, departureUrl = ''): void {
   try {
     void chrome.storage?.session?.set({
-      [GUIDE_PENDING_COMPLETION_KEY]: { selector, at: Date.now() }
+      [GUIDE_PENDING_COMPLETION_KEY]: { selector, at: Date.now(), departureUrl }
     });
   } catch {
     // The runtime message below is the primary completion signal.
   }
 
   try {
-    chrome.runtime?.sendMessage?.({ type: 'guide-step-done', selector }, () => {
+    chrome.runtime?.sendMessage?.({ type: 'guide-step-done', selector, departureUrl }, () => {
       void chrome.runtime.lastError;
     });
   } catch {
@@ -79,6 +79,7 @@ async function handleShowGuide(message: ShowGuideRequest): Promise<GuideResponse
     selector,
     guideText,
     searchFrames: message.searchFrames === true,
+    guideToken: typeof message.guideToken === 'string' ? message.guideToken : '',
     onComplete: publishStepCompletion
   });
 }

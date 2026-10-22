@@ -1,8 +1,10 @@
 import React, { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import '../style.css';
 import { pickAimsTabId, type TabCandidate } from '../guide/aimsTab';
-import type { GuideResponse } from '../guide/protocol';
+import { planGuide } from '../guide/planner';
+import { interpretGuideResult, type GuideResponse } from '../guide/protocol';
 import { getAISettings, routeModelRequest, setAISettings, type AIProvider } from '../services/aiRouter';
+import { bundledWorkflowRegistry } from '../services/registryLoader';
 import { getPreferredLanguage, setPreferredLanguage, type SupportedLanguage } from '../utils/i18n';
 
 type ChatMessage = {
@@ -19,6 +21,7 @@ type Copy = {
   suggestions: string[];
   thinking: string;
   highlight: string;
+  waiting: string;
   guideNext: string;
   guideDone: string;
   noTab: string;
@@ -38,7 +41,8 @@ const copy: Record<SupportedLanguage, Copy> = {
     welcome: 'Ask a question or choose a suggestion to get started.',
     suggestions: ['How do I view my weekly schedule?', 'How do I check my academic progress?'],
     thinking: 'Thinking…',
-    highlight: 'Highlighted in your AIMS tab. The spotlight stays on each step until you click it.',
+    highlight: 'Highlighted in your AIMS tab. The spotlight stays on this step and follows each page until you reach the destination.',
+    waiting: 'The guide is active. The spotlight stays armed and will show as soon as that AIMS step is on screen.',
     guideNext: 'Next step is highlighted in your AIMS tab.',
     guideDone: 'AIMS guide finished.',
     noTab: 'Open a CityU AIMS page to highlight the matching menu.',
@@ -56,7 +60,8 @@ const copy: Record<SupportedLanguage, Copy> = {
     welcome: '输入问题，或选择下方建议开始。',
     suggestions: ['如何查看每周课表？', '如何查询学业进度？'],
     thinking: '思考中…',
-    highlight: '已在 AIMS 页面高亮。聚光灯会停在当前步骤，直到你点击。',
+    highlight: '已在 AIMS 页面高亮。聚光灯会停在当前步骤，并跟随页面直到到达目标页。',
+    waiting: '引导已开始。聚光灯会保持，等这个步骤出现在 AIMS 页面上就继续显示。',
     guideNext: '已在 AIMS 页面高亮下一步。',
     guideDone: 'AIMS 引导已完成。',
     noTab: '请先打开 CityU AIMS 页面，再高亮对应菜单。',
@@ -187,8 +192,8 @@ export default function SidePanel(): JSX.Element {
         setNotice(copy[language].guideDone);
         return;
       }
-      if (message.phase === 'showing' && typeof message.stepIndex === 'number' && message.stepIndex > 0) {
-        setNotice(copy[language].guideNext);
+      if (message.phase === 'showing' && typeof message.stepIndex === 'number') {
+        setNotice(message.stepIndex > 0 ? copy[language].guideNext : copy[language].highlight);
       }
     };
 
@@ -224,40 +229,43 @@ export default function SidePanel(): JSX.Element {
     setBusy(true);
 
     try {
-      const result = await routeModelRequest(intent);
-      const answer = result.response;
-      const workflow = result.workflow;
-      const steps = workflow && workflow.workflowKey !== 'docs-fallback'
-        ? workflow.steps.filter((step) => step.targetSelector && step.targetSelector !== 'body')
+      const planned = planGuide(intent, bundledWorkflowRegistry);
+      const steps = planned
+        ? planned.steps.filter((step) => step.targetSelector && step.targetSelector !== 'body')
         : [];
-
-      if (workflow && steps.length) {
-        const tabId = await resolveAimsTabId();
-        const highlight = await sendToBackground({
+      const tabId = await resolveAimsTabId();
+      const showGuideNotice = (highlight: GuideResponse): void => {
+        const kind = interpretGuideResult(highlight);
+        if (kind === 'finished') {
+          setNotice(text.guideDone);
+        } else if (kind === 'highlighted') {
+          setNotice(text.highlight);
+        } else if (kind === 'waiting') {
+          setNotice(text.waiting);
+        } else if (kind === 'no-tab') {
+          setNotice(highlight.reason ? `${text.noTab} (${highlight.reason})` : text.noTab);
+        } else {
+          setNotice(highlight.reason ? `${text.unavailable} (${highlight.reason})` : text.unavailable);
+        }
+      };
+      const highlightPromise = planned && steps.length
+        ? sendToBackground({
           type: 'start-guide',
-          workflowKey: workflow.workflowKey,
+          workflowKey: planned.workflowKey,
           steps: steps.map((step) => ({
             stepId: step.stepId,
             targetSelector: step.targetSelector,
             guideText: step.guideText[language]
           })),
           tabId
-        });
-        if (highlight.ok) {
-          setNotice(text.highlight);
-        } else if (highlight.code === 'no-tab') {
-          setNotice(highlight.reason ? `${text.noTab} (${highlight.reason})` : text.noTab);
-        } else {
-          setNotice(highlight.reason ? `${text.unavailable} (${highlight.reason})` : text.unavailable);
-        }
-      } else {
-        void sendToBackground({ type: 'clear-guide', cancel: true });
-        if (workflow?.workflowKey !== 'docs-fallback') {
-          setNotice(text.noTab);
-        }
-      }
+        }).then((highlight) => {
+          showGuideNotice(highlight);
+          return highlight;
+        })
+        : Promise.resolve(null);
+      const [, result] = await Promise.all([highlightPromise, routeModelRequest(intent)]);
 
-      setMessages((current) => [...current, { role: 'assistant', text: answer }]);
+      setMessages((current) => [...current, { role: 'assistant', text: result.response }]);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessages((current) => [...current, { role: 'assistant', text: message }]);
