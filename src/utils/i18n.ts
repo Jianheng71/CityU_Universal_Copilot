@@ -13,7 +13,8 @@ export const translationCatalog: Record<string, { en: string; zh: string }> = {
   'sidebar.status': { en: 'Status ready', zh: '状态就绪' },
   'workflow.default': { en: 'Start guidance', zh: '开始引导' },
   'language.label': { en: 'Language', zh: '语言' },
-  'provider.label': { en: 'AI provider', zh: 'AI 提供商' }
+  'provider.label': { en: 'AI provider', zh: 'AI 提供商' },
+  'settings.save': { en: 'Save AI settings', zh: '保存 AI 设置' }
 };
 
 export function t(key: string, lang: SupportedLanguage = DEFAULT_LANGUAGE): string {

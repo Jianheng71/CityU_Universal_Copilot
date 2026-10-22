@@ -1,3 +1,4 @@
+import { FONT_SANS } from '../ui/fontStack';
 import { GUIDE_TARGET_ATTR, SPOTLIGHT_HOST_ID } from './constants';
 import {
   clampTooltip,
@@ -126,51 +127,65 @@ export function injectGlassSpotlight(
   const style = doc.createElement('style');
   style.textContent = `
     * { box-sizing: border-box; }
+    .cityu-hole,
+    .cityu-ring,
+    .cityu-tooltip {
+      pointer-events: none;
+    }
     .cityu-hole {
       position: fixed;
       border-radius: ${SPOTLIGHT_RADIUS}px;
       background: transparent;
-      box-shadow: 0 0 0 100vmax rgba(7, 12, 24, 0.66);
+      --cityu-spread: 100vmax;
+      box-shadow:
+        0 0 12px 1px rgba(8, 12, 20, 0.32),
+        0 0 0 var(--cityu-spread) rgba(8, 12, 20, 0.6);
+      animation: cityu-enter 140ms cubic-bezier(0.2, 0, 0, 1) both;
     }
     .cityu-ring {
       position: fixed;
-      border: 2px solid #bfdbfe;
+      border: 2px solid #143a66;
       border-radius: ${SPOTLIGHT_RADIUS}px;
+      background: transparent;
       box-shadow:
-        0 0 0 4px rgba(59, 130, 246, 0.28),
-        0 0 22px rgba(96, 165, 250, 0.95);
-      animation: cityu-pulse 1.6s ease-out infinite;
+        0 0 0 2px #ffffff,
+        0 0 0 5px #1f4e8c;
+      animation: cityu-enter 140ms cubic-bezier(0.2, 0, 0, 1) both;
     }
     .cityu-tooltip {
       position: fixed;
       max-width: ${TOOLTIP_MAX_WIDTH}px;
-      padding: 10px 12px 10px 28px;
+      padding: 12px 14px 12px 18px;
       border-radius: 12px;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(191, 219, 254, 0.45);
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
-      color: #f8fafc;
-      font: 13px/1.45 "Segoe UI", sans-serif;
-      letter-spacing: 0.01em;
-      backdrop-filter: blur(12px);
+      background: #171b22;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow:
+        0 1px 1px rgba(0, 0, 0, 0.18),
+        0 12px 28px rgba(0, 0, 0, 0.28);
+      color: #f4f6f8;
+      font: 500 16px/1.5 ${FONT_SANS};
+      letter-spacing: 0;
+      overflow-wrap: break-word;
+      animation: cityu-enter 140ms cubic-bezier(0.2, 0, 0, 1) both;
     }
     .cityu-tooltip::before {
       content: "";
       position: absolute;
-      left: 12px;
-      top: 15px;
-      width: 8px;
-      height: 8px;
+      left: 8px;
+      top: 16px;
+      width: 3px;
+      height: 16px;
       border-radius: 999px;
-      background: #60a5fa;
-      box-shadow: 0 0 10px rgba(96, 165, 250, 0.95);
+      background: #8fb4e8;
     }
-    @keyframes cityu-pulse {
-      0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.28), 0 0 16px rgba(96, 165, 250, 0.8); }
-      50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.16), 0 0 28px rgba(147, 197, 253, 1); }
+    @keyframes cityu-enter {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .cityu-ring { animation: none; }
+      .cityu-hole,
+      .cityu-ring,
+      .cityu-tooltip { animation: none; }
     }
   `;
 
@@ -180,6 +195,7 @@ export function injectGlassSpotlight(
   ring.className = 'cityu-ring';
   const tooltip = doc.createElement('div');
   tooltip.className = 'cityu-tooltip';
+  tooltip.setAttribute('role', 'status');
   tooltip.textContent = guideText;
 
   shadow.append(style, hole, ring, tooltip);
@@ -230,7 +246,7 @@ export function injectGlassSpotlight(
     const nextHole = holeBox(nextTarget);
     const viewport = { width: view.innerWidth, height: view.innerHeight };
     const spread = Math.max(viewport.width, viewport.height, 1) * 2;
-    hole.style.boxShadow = `0 0 0 ${Math.ceil(spread)}px rgba(7, 12, 24, 0.66)`;
+    hole.style.setProperty('--cityu-spread', `${Math.ceil(spread)}px`);
     for (const layer of [hole, ring]) {
       layer.style.left = `${nextHole.left}px`;
       layer.style.top = `${nextHole.top}px`;
